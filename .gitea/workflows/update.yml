@@ -1,0 +1,34 @@
+name: Update Security News
+
+on:
+  schedule:
+    # 9:00 JST = 0:00 UTC
+    - cron: '0 0 * * *'
+    # 15:00 JST = 6:00 UTC
+    - cron: '0 6 * * *'
+  workflow_dispatch:  # 手動実行も可能
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Generate static site
+        run: python generate.py
+
+      - name: Commit and push docs/
+        run: |
+          git config user.name  "gitea-actions[bot]"
+          git config user.email "gitea-actions[bot]@noreply.localhost"
+          git add docs/
+          git diff --staged --quiet && echo "No changes." && exit 0
+          git commit -m "Update security news [skip ci]"
+          git push origin HEAD:${{ github.ref_name }}
