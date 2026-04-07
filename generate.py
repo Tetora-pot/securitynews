@@ -330,8 +330,7 @@ def build_html(articles, source_status, generated_at):
 
   <!-- ===== Schedule bar ===== -->
   <div class="schedule-bar text-center py-1 small">
-    自動更新: <strong>毎時00分 (JST 6:00〜22:00)</strong>
-    &nbsp;&#124;&nbsp; 最終更新: <strong>{generated_at}</strong>
+    最終更新: <strong>{generated_at}</strong>
   </div>
 
   <!-- ===== Main ===== -->
