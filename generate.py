@@ -314,7 +314,7 @@ def build_html(articles, source_status, generated_at):
     <div class="container-fluid px-3">
       <span class="navbar-brand fw-bold me-auto">&#9888; CSIRT News Monitor</span>
       <div class="d-flex align-items-center gap-2 flex-shrink-0">
-        <span class="text-light d-none d-md-inline" style="font-size:0.7rem">生成: {generated_at}</span>
+        <span class="text-light d-none d-sm-inline" style="font-size:0.7rem">生成: {generated_at}</span>
         <!-- 言語トグル (コンパクト) -->
         <div class="btn-group btn-group-sm" role="group">
           <input type="radio" class="btn-check" name="lang-mode" id="lang-ja" value="ja" />
@@ -331,6 +331,7 @@ def build_html(articles, source_status, generated_at):
   <!-- ===== Schedule bar ===== -->
   <div class="schedule-bar text-center py-1 small">
     自動更新: <strong>毎時00分 (JST 6:00〜22:00)</strong>
+    &nbsp;&#124;&nbsp; 最終更新: <strong>{generated_at}</strong>
   </div>
 
   <!-- ===== Main ===== -->
@@ -539,7 +540,7 @@ def build_html(articles, source_status, generated_at):
               </div>
               <h6 class="card-title article-title">
                 <a href="${{url}}" target="_blank" rel="noopener noreferrer"
-                   class="text-decoration-none link-body-emphasis stretched-link">${{title}}</a>
+                   class="text-decoration-none link-body-emphasis">${{title}}</a>
               </h6>
               <p class="card-text text-secondary article-summary flex-grow-1">${{summary}}${{a.summary.length >= 300 ? '...' : ''}}</p>
               <div class="text-muted article-date mt-2">${{escHtml(a.published)}}</div>
