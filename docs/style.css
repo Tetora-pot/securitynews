@@ -1,9 +1,8 @@
 /* ===== Base ===== */
 body {
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  background-color: var(--bs-secondary-bg);
 }
-[data-bs-theme="light"] body { background-color: #f0f2f5; }
-[data-bs-theme="dark"]  body { background-color: #0d1117; }
 
 /* ===== Navbar ===== */
 .navbar {
@@ -15,33 +14,26 @@ body {
 .schedule-bar {
   font-size: 0.75rem;
   letter-spacing: 0.01em;
-}
-[data-bs-theme="light"] .schedule-bar {
   background: #1a1e2e;
   color: #9ca3af;
 }
-[data-bs-theme="light"] .schedule-bar strong { color: #60a5fa; }
+.schedule-bar strong {
+  color: #60a5fa;
+}
 [data-bs-theme="dark"] .schedule-bar {
   background: #060a14;
-  color: #6b7280;
 }
-[data-bs-theme="dark"] .schedule-bar strong { color: #3b82f6; }
 
-/* ===== Filter bar ===== */
+/* ===== Filter bar: use Bootstrap CSS vars → auto dark mode ===== */
 .filter-bar {
+  background: var(--bs-card-bg);
+  border: 1px solid var(--bs-border-color-translucent);
   border-radius: 10px;
   padding: 10px 12px;
+  box-shadow: var(--bs-box-shadow-sm);
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-[data-bs-theme="light"] .filter-bar {
-  background: #fff;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
-}
-[data-bs-theme="dark"] .filter-bar {
-  background: var(--bs-tertiary-bg);
-  border: 1px solid var(--bs-border-color);
 }
 
 .filter-row {
@@ -79,29 +71,24 @@ body {
 @media (hover: hover) {
   .article-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 18px rgba(0,0,0,0.12) !important;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.15) !important;
   }
-}
-[data-bs-theme="dark"] .article-card:hover {
-  box-shadow: 0 6px 20px rgba(0,0,0,0.5) !important;
 }
 
 .article-card.border-danger { border-width: 2px !important; border-color: #dc3545 !important; }
 
 /* Confirmed / checked articles */
 .article-card.is-checked { opacity: 0.45; }
-[data-bs-theme="dark"] .article-card.is-checked { opacity: 0.35; }
 
 /* ===== Checkbox (confirmed mark) ===== */
 .checked-label {
-  position: relative;
-  z-index: 5;   /* above stretched-link overlay */
   cursor: pointer;
   line-height: 1;
+  /* No position/z-index needed — stretched-link removed */
 }
 .checked-label .form-check-input {
-  width: 1.1em;
-  height: 1.1em;
+  width: 1.15em;
+  height: 1.15em;
   cursor: pointer;
 }
 
