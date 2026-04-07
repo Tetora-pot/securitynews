@@ -1,13 +1,20 @@
 import re
+import threading
+import time
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from email.utils import parsedate_to_datetime
+from zoneinfo import ZoneInfo
 
 from flask import Flask, render_template, jsonify
 
 app = Flask(__name__)
+
+JST = ZoneInfo("Asia/Tokyo")
+# Scheduled update hours in JST
+SCHEDULE_HOURS = (9, 15)
 
 FEEDS = [
     {
@@ -46,6 +53,15 @@ VULN_PATTERNS_EN = re.compile(
 VULN_WORDS_JA = ["脆弱性", "CVE-", "パッチ", "セキュリティアップデート", "セキュリティ更新",
                  "セキュリティ修正", "深刻度", "危険度", "アドバイザリ"]
 
+# In-memory cache
+_cache: dict = {
+    "articles": [],
+    "sources": {},
+    "fetched_at": None,   # datetime in JST
+    "is_fetching": False,
+}
+_cache_lock = threading.Lock()
+
 
 def _has_match(text, pattern_en, words_ja, lang):
     if pattern_en.search(text):
@@ -61,7 +77,6 @@ def _strip_tags(html: str) -> str:
 
 
 def _parse_date(raw: str) -> datetime:
-    """Parse RFC-2822 or ISO-8601 date strings."""
     if not raw:
         return datetime.min.replace(tzinfo=timezone.utc)
     try:
@@ -77,16 +92,13 @@ def _parse_date(raw: str) -> datetime:
     return datetime.min.replace(tzinfo=timezone.utc)
 
 
-# XML namespaces commonly used in RSS/Atom feeds
 _NS = {
     "content": "http://purl.org/rss/1.0/modules/content/",
     "dc": "http://purl.org/dc/elements/1.1/",
-    "atom": "http://www.w3.org/2005/Atom",
 }
 
 
 def fetch_feed(cfg: dict) -> tuple[list, str | None]:
-    """Returns (articles, error_message_or_None)."""
     articles = []
     error = None
     try:
@@ -100,10 +112,9 @@ def fetch_feed(cfg: dict) -> tuple[list, str | None]:
         root = ET.fromstring(raw)
         lang = cfg["lang"]
 
-        # Support RSS 2.0 and Atom
-        items = root.findall(".//item")  # RSS
+        items = root.findall(".//item")
         if not items:
-            items = root.findall(".//{http://www.w3.org/2005/Atom}entry")  # Atom
+            items = root.findall(".//{http://www.w3.org/2005/Atom}entry")
 
         for item in items[:60]:
             def g(tag, ns=None):
@@ -113,7 +124,6 @@ def fetch_feed(cfg: dict) -> tuple[list, str | None]:
             title = g("title") or item.findtext("{http://www.w3.org/2005/Atom}title", "")
             link = g("link") or ""
             if not link:
-                # Atom <link href="..."/>
                 lel = item.find("{http://www.w3.org/2005/Atom}link")
                 link = lel.get("href", "") if lel is not None else ""
 
@@ -156,29 +166,92 @@ def fetch_feed(cfg: dict) -> tuple[list, str | None]:
     return articles, error
 
 
-def fetch_all_feeds() -> dict:
+def refresh_cache():
+    with _cache_lock:
+        if _cache["is_fetching"]:
+            return
+        _cache["is_fetching"] = True
+
+    print(f"[{datetime.now(JST).strftime('%Y-%m-%d %H:%M JST')}] Fetching feeds...")
     articles = []
     source_status = {}
-    with ThreadPoolExecutor(max_workers=3) as ex:
-        futures = {ex.submit(fetch_feed, cfg): cfg for cfg in FEEDS}
-        for f in as_completed(futures):
-            cfg = futures[f]
-            result, err = f.result()
-            articles.extend(result)
-            source_status[cfg["name"]] = {"ok": err is None, "error": err, "count": len(result)}
-    articles.sort(key=lambda x: x["published_ts"], reverse=True)
-    return {"articles": articles, "sources": source_status}
+    try:
+        with ThreadPoolExecutor(max_workers=3) as ex:
+            futures = {ex.submit(fetch_feed, cfg): cfg for cfg in FEEDS}
+            for f in as_completed(futures):
+                cfg = futures[f]
+                result, err = f.result()
+                articles.extend(result)
+                source_status[cfg["name"]] = {
+                    "ok": err is None,
+                    "error": err,
+                    "count": len(result),
+                }
+        articles.sort(key=lambda x: x["published_ts"], reverse=True)
+        now_jst = datetime.now(JST)
+        with _cache_lock:
+            _cache["articles"] = articles
+            _cache["sources"] = source_status
+            _cache["fetched_at"] = now_jst.strftime("%Y-%m-%d %H:%M JST")
+            _cache["is_fetching"] = False
+        print(f"[{now_jst.strftime('%Y-%m-%d %H:%M JST')}] Done. {len(articles)} articles.")
+    except Exception as e:
+        print(f"[ERROR] refresh_cache: {e}")
+        with _cache_lock:
+            _cache["is_fetching"] = False
+
+
+def _next_schedule_str() -> str:
+    """Return JST time string of the next scheduled update."""
+    now = datetime.now(JST)
+    for h in sorted(SCHEDULE_HOURS):
+        if now.hour < h:
+            return f"{h:02d}:00 JST"
+    return f"{sorted(SCHEDULE_HOURS)[0]:02d}:00 JST (翌日)"
+
+
+def _scheduler_thread():
+    triggered = set()
+    while True:
+        now = datetime.now(JST)
+        key = (now.date(), now.hour)
+        if now.hour in SCHEDULE_HOURS and key not in triggered:
+            triggered.add(key)
+            # Prune old keys to avoid unbounded growth
+            today_keys = {k for k in triggered if k[0] == now.date()}
+            triggered.clear()
+            triggered.update(today_keys)
+            threading.Thread(target=refresh_cache, daemon=True).start()
+        time.sleep(30)
 
 
 @app.route("/")
 def index():
-    return render_template("index.html", feeds=FEEDS)
+    return render_template("index.html", feeds=FEEDS, schedule_hours=SCHEDULE_HOURS)
 
 
 @app.route("/api/news")
 def api_news():
-    return jsonify(fetch_all_feeds())
+    with _cache_lock:
+        data = {
+            "articles": _cache["articles"],
+            "sources": _cache["sources"],
+            "fetched_at": _cache["fetched_at"],
+            "is_fetching": _cache["is_fetching"],
+            "next_update": _next_schedule_str(),
+        }
+    return jsonify(data)
 
+
+@app.route("/api/refresh", methods=["POST"])
+def api_refresh():
+    threading.Thread(target=refresh_cache, daemon=True).start()
+    return jsonify({"status": "started"})
+
+
+# Start background scheduler and initial fetch on startup
+threading.Thread(target=_scheduler_thread, daemon=True, name="scheduler").start()
+threading.Thread(target=refresh_cache, daemon=True, name="initial-fetch").start()
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000, debug=False)

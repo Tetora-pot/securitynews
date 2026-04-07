@@ -8,119 +8,177 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
 </head>
 <body>
-  <nav class="navbar navbar-dark bg-dark px-3">
-    <span class="navbar-brand fw-bold">
-      <span class="text-danger">&#9888;</span> CSIRT Security News Monitor
+
+  <!-- Navbar -->
+  <nav class="navbar navbar-dark bg-dark px-3 sticky-top">
+    <span class="navbar-brand fw-bold fs-6">
+      &#9888; CSIRT News Monitor
     </span>
-    <div class="d-flex align-items-center gap-3">
-      <span class="text-light small" id="last-updated"></span>
-      <button class="btn btn-sm btn-outline-light" id="refresh-btn" onclick="loadNews()">
+    <div class="d-flex align-items-center gap-2">
+      <span class="text-light d-none d-sm-inline" style="font-size:0.72rem" id="fetched-at"></span>
+      <button class="btn btn-sm btn-outline-light" id="refresh-btn" onclick="manualRefresh()">
         &#8635; 更新
       </button>
     </div>
   </nav>
 
-  <div class="container-fluid py-3">
-    <!-- Filter bar -->
-    <div class="row g-2 mb-3 align-items-center">
-      <div class="col-auto">
-        <label class="form-label mb-0 fw-semibold text-secondary small">フィルター</label>
-      </div>
-      <div class="col-auto">
-        <div class="btn-group btn-group-sm" role="group">
-          <input type="radio" class="btn-check" name="filter" id="filter-all" value="all" checked />
-          <label class="btn btn-outline-secondary" for="filter-all">すべて</label>
-          <input type="radio" class="btn-check" name="filter" id="filter-exploit" value="exploit" />
-          <label class="btn btn-outline-danger" for="filter-exploit">&#9888; 悪用観測</label>
-          <input type="radio" class="btn-check" name="filter" id="filter-vuln" value="vuln" />
-          <label class="btn btn-outline-warning" for="filter-vuln">&#128274; 脆弱性情報</label>
+  <!-- Schedule info bar -->
+  <div class="schedule-bar text-center py-1 small">
+    自動更新: 毎日 {% for h in schedule_hours %}<strong>{{ '%02d'|format(h) }}:00 JST</strong>{% if not loop.last %} / {% endif %}{% endfor %} &nbsp;|&nbsp;
+    次回: <span id="next-update">--</span>
+    <span id="fetching-indicator" class="d-none text-warning ms-2">&#9679; 取得中...</span>
+  </div>
+
+  <div class="container-fluid py-2 px-2 px-md-3">
+
+    <!-- Filter bar (desktop: single row / mobile: stacked) -->
+    <div class="filter-bar mb-2">
+
+      <!-- Type filter -->
+      <div class="filter-row">
+        <span class="filter-label">種別</span>
+        <div class="filter-scroll">
+          <div class="btn-group btn-group-sm" role="group">
+            <input type="radio" class="btn-check" name="filter" id="filter-all" value="all" checked />
+            <label class="btn btn-outline-secondary" for="filter-all">すべて</label>
+            <input type="radio" class="btn-check" name="filter" id="filter-exploit" value="exploit" />
+            <label class="btn btn-outline-danger" for="filter-exploit">&#9888; 悪用観測</label>
+            <input type="radio" class="btn-check" name="filter" id="filter-vuln" value="vuln" />
+            <label class="btn btn-outline-warning" for="filter-vuln">&#128274; 脆弱性</label>
+          </div>
         </div>
       </div>
-      <div class="col-auto">
-        <div class="btn-group btn-group-sm" role="group">
-          <input type="radio" class="btn-check" name="source" id="src-all" value="all" checked />
-          <label class="btn btn-outline-secondary" for="src-all">全ソース</label>
-          {% for f in feeds %}
-          <input type="radio" class="btn-check" name="source" id="src-{{ loop.index }}" value="{{ f.name }}" />
-          <label class="btn btn-outline-info" for="src-{{ loop.index }}">{{ f.name }}</label>
-          {% endfor %}
+
+      <!-- Source filter -->
+      <div class="filter-row">
+        <span class="filter-label">ソース</span>
+        <div class="filter-scroll">
+          <div class="btn-group btn-group-sm" role="group">
+            <input type="radio" class="btn-check" name="source" id="src-all" value="all" checked />
+            <label class="btn btn-outline-secondary" for="src-all">全て</label>
+            {% for f in feeds %}
+            <input type="radio" class="btn-check" name="source" id="src-{{ loop.index }}" value="{{ f.name }}" />
+            <label class="btn btn-outline-info" for="src-{{ loop.index }}">{{ f.name }}</label>
+            {% endfor %}
+          </div>
         </div>
       </div>
-      <div class="col">
-        <input type="text" class="form-control form-control-sm" id="search-input" placeholder="キーワード検索..." />
+
+      <!-- Search + count -->
+      <div class="filter-row">
+        <span class="filter-label">検索</span>
+        <input type="text" class="form-control form-control-sm flex-grow-1" id="search-input" placeholder="キーワード..." />
+        <span class="text-secondary small ms-2 text-nowrap" id="article-count"></span>
       </div>
-      <div class="col-auto text-secondary small" id="article-count"></div>
     </div>
 
-    <!-- Source status bar -->
-    <div id="source-status" class="d-flex gap-2 mb-2 flex-wrap d-none"></div>
+    <!-- Source status badges -->
+    <div id="source-status" class="d-flex gap-2 mb-2 flex-wrap"></div>
 
-    <!-- Status bar -->
-    <div id="status-bar" class="alert alert-info py-2 d-none" role="alert"></div>
+    <!-- Alert bar -->
+    <div id="status-bar" class="alert alert-danger py-2 d-none" role="alert"></div>
 
-    <!-- Loading spinner -->
+    <!-- Loading -->
     <div id="loading" class="text-center py-5">
       <div class="spinner-border text-primary" role="status"></div>
-      <p class="mt-2 text-secondary">ニュースを取得中...</p>
+      <p class="mt-2 text-secondary small">ニュースを取得中...</p>
     </div>
 
-    <!-- Articles grid -->
-    <div id="articles-container" class="row g-3" style="display:none !important"></div>
+    <!-- Articles -->
+    <div id="articles-container" class="row g-2 g-md-3" style="display:none !important"></div>
 
     <!-- Empty state -->
     <div id="empty-state" class="text-center py-5 d-none text-secondary">
-      <div style="font-size:3rem">&#128269;</div>
-      <p>条件に一致する記事が見つかりませんでした。</p>
+      <div style="font-size:2.5rem">&#128269;</div>
+      <p class="small">条件に一致する記事はありません</p>
     </div>
+
   </div>
+
+  <!-- Mobile bottom padding (for thumb reach) -->
+  <div class="pb-4 d-md-none"></div>
 
   <script>
     let allArticles = [];
+    let pollTimer = null;
 
-    async function loadNews() {
-      const btn = document.getElementById('refresh-btn');
-      btn.disabled = true;
-      btn.textContent = '取得中...';
-      document.getElementById('loading').style.display = 'block';
-      document.getElementById('articles-container').style.setProperty('display', 'none', 'important');
-      document.getElementById('empty-state').classList.add('d-none');
-      document.getElementById('status-bar').classList.add('d-none');
+    // Poll the API; if is_fetching, poll again in 3s to catch completion
+    async function loadNews(showSpinner = true) {
+      if (showSpinner) {
+        document.getElementById('loading').style.display = 'block';
+        document.getElementById('articles-container').style.setProperty('display', 'none', 'important');
+        document.getElementById('empty-state').classList.add('d-none');
+        document.getElementById('status-bar').classList.add('d-none');
+      }
 
       try {
         const res = await fetch('/api/news');
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = await res.json();
-        allArticles = data.articles;
-        renderSourceStatus(data.sources);
-        document.getElementById('last-updated').textContent =
-          '最終更新: ' + new Date().toLocaleTimeString('ja-JP');
+
+        allArticles = data.articles || [];
+        renderSourceStatus(data.sources || {});
+        renderMeta(data);
         renderArticles();
+
+        if (data.is_fetching) {
+          // Still fetching — poll again shortly
+          clearTimeout(pollTimer);
+          pollTimer = setTimeout(() => loadNews(false), 3000);
+        }
       } catch (e) {
-        showStatus('ニュースの取得に失敗しました: ' + e.message, 'danger');
+        document.getElementById('status-bar').textContent = 'ニュースの取得に失敗しました: ' + e.message;
+        document.getElementById('status-bar').classList.remove('d-none');
       } finally {
-        btn.disabled = false;
-        btn.textContent = '↻ 更新';
-        document.getElementById('loading').style.display = 'none';
+        if (showSpinner) {
+          document.getElementById('loading').style.display = 'none';
+        }
+      }
+    }
+
+    async function manualRefresh() {
+      const btn = document.getElementById('refresh-btn');
+      btn.disabled = true;
+      btn.textContent = '取得中...';
+      try {
+        await fetch('/api/refresh', { method: 'POST' });
+        // Poll until done
+        clearTimeout(pollTimer);
+        pollTimer = setTimeout(() => loadNews(false), 2000);
+      } catch (e) {
+        console.error(e);
+      } finally {
+        setTimeout(() => {
+          btn.disabled = false;
+          btn.textContent = '↻ 更新';
+        }, 3000);
+      }
+    }
+
+    function renderMeta(data) {
+      const fetchedAt = document.getElementById('fetched-at');
+      if (data.fetched_at) {
+        fetchedAt.textContent = '取得: ' + data.fetched_at;
+      }
+      const nextEl = document.getElementById('next-update');
+      if (data.next_update) nextEl.textContent = data.next_update;
+
+      const indicator = document.getElementById('fetching-indicator');
+      if (data.is_fetching) {
+        indicator.classList.remove('d-none');
+      } else {
+        indicator.classList.add('d-none');
       }
     }
 
     function renderSourceStatus(sources) {
       const bar = document.getElementById('source-status');
-      if (!sources) { bar.classList.add('d-none'); return; }
-      bar.classList.remove('d-none');
       bar.innerHTML = Object.entries(sources).map(([name, s]) => {
         const cls = s.ok ? 'bg-success' : 'bg-danger';
-        const icon = s.ok ? '&#10003;' : '&#10007;';
+        const icon = s.ok ? '✓' : '✗';
         const tip = s.ok ? `${s.count}件取得` : `エラー: ${s.error}`;
-        return `<span class="badge ${cls}" title="${escHtml(tip)}">${icon} ${escHtml(name)}</span>`;
+        return `<span class="badge ${cls} source-badge" title="${escHtml(tip)}">${icon} ${escHtml(name)}</span>`;
       }).join('');
-    }
-
-    function showStatus(msg, type = 'info') {
-      const bar = document.getElementById('status-bar');
-      bar.className = `alert alert-${type} py-2`;
-      bar.textContent = msg;
-      bar.classList.remove('d-none');
     }
 
     function renderArticles() {
@@ -133,8 +191,7 @@
         if (filter === 'vuln' && !a.is_vuln) return false;
         if (source !== 'all' && a.source !== source) return false;
         if (keyword) {
-          const text = `${a.title} ${a.summary}`.toLowerCase();
-          if (!text.includes(keyword)) return false;
+          if (!`${a.title} ${a.summary}`.toLowerCase().includes(keyword)) return false;
         }
         return true;
       });
@@ -154,7 +211,7 @@
 
       filtered.forEach(a => {
         const col = document.createElement('div');
-        col.className = 'col-12 col-md-6 col-xl-4';
+        col.className = 'col-12 col-sm-6 col-xl-4';
 
         const exploitBadge = a.is_exploit
           ? '<span class="badge bg-danger me-1">&#9888; 悪用観測</span>'
@@ -166,15 +223,16 @@
 
         col.innerHTML = `
           <div class="card h-100 shadow-sm article-card ${a.is_exploit ? 'border-danger' : ''}">
-            <div class="card-body d-flex flex-column">
+            <div class="card-body d-flex flex-column p-3">
               <div class="mb-2">${exploitBadge}${vulnBadge}${sourceBadge}</div>
-              <h6 class="card-title">
-                <a href="${escHtml(a.link)}" target="_blank" rel="noopener noreferrer" class="text-decoration-none link-dark stretched-link">
+              <h6 class="card-title article-title">
+                <a href="${escHtml(a.link)}" target="_blank" rel="noopener noreferrer"
+                   class="text-decoration-none link-dark stretched-link">
                   ${escHtml(a.title)}
                 </a>
               </h6>
-              <p class="card-text text-secondary small flex-grow-1">${escHtml(a.summary)}${a.summary.length >= 300 ? '...' : ''}</p>
-              <div class="text-muted small mt-2">${escHtml(a.published)}</div>
+              <p class="card-text text-secondary article-summary flex-grow-1">${escHtml(a.summary)}${a.summary.length >= 300 ? '...' : ''}</p>
+              <div class="text-muted article-date mt-2">${escHtml(a.published)}</div>
             </div>
           </div>`;
         container.appendChild(col);
@@ -189,15 +247,19 @@
         .replace(/"/g, '&quot;');
     }
 
-    // Event listeners for filters
     document.querySelectorAll('input[name="filter"], input[name="source"]').forEach(el => {
       el.addEventListener('change', renderArticles);
     });
     document.getElementById('search-input').addEventListener('input', renderArticles);
 
-    // Auto-refresh every 5 minutes
+    // Initial load; then scheduled auto-reload at top of each hour
     loadNews();
-    setInterval(loadNews, 5 * 60 * 1000);
+    setInterval(() => {
+      const now = new Date();
+      const h = now.getHours();
+      // Reload at 9:xx and 15:xx JST (offset check is approximate; server handles truth)
+      if (now.getMinutes() === 0) loadNews(false);
+    }, 60 * 1000);
   </script>
 </body>
 </html>
