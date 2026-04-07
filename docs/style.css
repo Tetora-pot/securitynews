@@ -1,0 +1,127 @@
+/* ===== Base ===== */
+body {
+  background-color: #f0f2f5;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+/* ===== Navbar ===== */
+.navbar {
+  border-bottom: 2px solid #dc3545;
+  z-index: 1030;
+}
+
+/* ===== Schedule info bar ===== */
+.schedule-bar {
+  background: #1a1e2e;
+  color: #9ca3af;
+  font-size: 0.75rem;
+  letter-spacing: 0.01em;
+}
+.schedule-bar strong {
+  color: #60a5fa;
+}
+
+/* ===== Filter bar ===== */
+.filter-bar {
+  background: #fff;
+  border-radius: 10px;
+  padding: 10px 12px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filter-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filter-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #6b7280;
+  white-space: nowrap;
+  min-width: 2.5rem;
+}
+
+/* Allow horizontal scroll on small screens without showing scrollbar */
+.filter-scroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.filter-scroll::-webkit-scrollbar { display: none; }
+
+/* Make btn-group labels bigger on mobile for tap targets */
+@media (max-width: 576px) {
+  .btn-group-sm > .btn {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.78rem;
+  }
+  .filter-label {
+    min-width: 2rem;
+  }
+}
+
+/* ===== Source status badges ===== */
+.source-badge {
+  font-size: 0.72rem;
+  cursor: default;
+}
+
+/* ===== Article cards ===== */
+.article-card {
+  border-radius: 10px;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  border: 1px solid #e5e7eb;
+}
+
+@media (hover: hover) {
+  .article-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 18px rgba(0,0,0,0.10) !important;
+  }
+}
+
+.article-card.border-danger {
+  border-width: 2px !important;
+  border-color: #dc3545 !important;
+}
+
+.article-title {
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin-bottom: 0.4rem;
+}
+
+.article-title a:hover {
+  color: #0d6efd !important;
+}
+
+.article-summary {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #6b7280 !important;
+}
+
+.article-date {
+  font-size: 0.72rem;
+  color: #9ca3af;
+}
+
+/* ===== Badge sizing ===== */
+.badge {
+  font-size: 0.68rem;
+}
+
+/* ===== Mobile full-width search ===== */
+@media (max-width: 576px) {
+  .filter-row:last-child {
+    flex-wrap: wrap;
+  }
+  #search-input {
+    min-width: 0;
+  }
+}
