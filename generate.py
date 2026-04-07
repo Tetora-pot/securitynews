@@ -89,7 +89,16 @@ def fetch_feed(cfg):
     try:
         req = urllib.request.Request(
             cfg["url"],
-            headers={"User-Agent": "CSIRT-SecurityNews-Monitor/1.0 (RSS reader)"},
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/124.0.0.0 Safari/537.36"
+                ),
+                "Accept": "application/rss+xml, application/xml, text/xml, */*",
+                "Accept-Language": "ja,en;q=0.9",
+                "Cache-Control": "no-cache",
+            },
         )
         with urllib.request.urlopen(req, timeout=20) as resp:
             raw = resp.read()
@@ -456,13 +465,20 @@ def build_html(articles, source_status, generated_at):
     // ===== Source status =====
     (function() {{
       const bar = document.getElementById('source-status');
+      const errors = [];
       Object.entries(SOURCE_STATUS).forEach(([name, s]) => {{
         const cls = s.ok ? 'bg-success' : 'bg-danger';
         const tip = s.ok ? `${{s.count}}件取得` : `エラー: ${{s.error}}`;
         bar.insertAdjacentHTML('beforeend',
           `<span class="badge ${{cls}} source-badge" title="${{escHtml(tip)}}">${{s.ok ? '✓' : '✗'}} ${{escHtml(name)}}</span>`
         );
+        if (!s.ok) errors.push(`${{name}}: ${{s.error}}`);
       }});
+      if (errors.length) {{
+        bar.insertAdjacentHTML('beforeend',
+          `<span class="text-danger small ms-1" style="font-size:0.72rem">⚠ ${{escHtml(errors.join(' / '))}}</span>`
+        );
+      }}
     }})();
 
     // ===== Checked articles =====
