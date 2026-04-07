@@ -1,6 +1,7 @@
 """
 Static site generator for CSIRT Security News Monitor.
-Fetches RSS feeds and writes docs/index.html with all articles embedded as JSON.
+Fetches RSS feeds, translates English articles to Japanese via Claude API,
+and writes docs/index.html with all articles embedded as JSON.
 Run manually or via CI (GitHub/Gitea Actions).
 """
 
@@ -11,7 +12,7 @@ import shutil
 import sys
 import urllib.request
 import xml.etree.ElementTree as ET
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from zoneinfo import ZoneInfo
@@ -47,6 +48,12 @@ _NS = {
     "dc":      "http://purl.org/dc/elements/1.1/",
 }
 
+TRANSLATE_BATCH_SIZE = 15
+
+
+# ---------------------------------------------------------------------------
+# RSS Fetching
+# ---------------------------------------------------------------------------
 
 def _has_match(text, pattern_en, words_ja, lang):
     if pattern_en.search(text):
@@ -127,6 +134,7 @@ def fetch_feed(cfg):
 
             articles.append({
                 "source":       cfg["name"],
+                "lang":         lang,
                 "title":        title,
                 "link":         link,
                 "summary":      summary[:300],
@@ -152,9 +160,90 @@ def fetch_all():
     return articles, source_status
 
 
+# ---------------------------------------------------------------------------
+# Translation (Claude API)
+# ---------------------------------------------------------------------------
+
+def _translate_batch(client, batch):
+    """
+    batch: [{"idx": int, "title": str, "summary": str}, ...]
+    Returns the same list with title/summary replaced by Japanese.
+    Falls back to original on any error.
+    """
+    prompt = (
+        "以下はセキュリティニュースの英語記事リストです。"
+        "各記事のtitleとsummaryを自然な日本語に翻訳してください。\n"
+        "・専門用語（CVE番号、製品名、固有名詞）はそのまま残す\n"
+        "・同じJSON配列形式で返す（idフィールドは変更しない）\n"
+        "・JSONのみ返す（説明文は不要）\n\n"
+        + json.dumps(batch, ensure_ascii=False)
+    )
+    try:
+        msg = client.messages.create(
+            model="claude-haiku-4-5-20251001",
+            max_tokens=4096,
+            messages=[{"role": "user", "content": prompt}],
+        )
+        text = msg.content[0].text.strip()
+        # Extract JSON array robustly
+        m = re.search(r"\[.*\]", text, re.DOTALL)
+        if m:
+            translated = json.loads(m.group())
+            return {item["idx"]: item for item in translated}
+    except Exception as e:
+        print(f"[WARN] Translation batch failed: {e}", file=sys.stderr)
+    return {}
+
+
+def translate_articles(articles):
+    """Translate English articles in-place using Claude API. Skips if API key not set."""
+    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
+    if not api_key:
+        print("[INFO] ANTHROPIC_API_KEY not set — skipping translation.")
+        return articles
+
+    try:
+        import anthropic
+    except ImportError:
+        print("[WARN] anthropic package not installed — skipping translation.", file=sys.stderr)
+        return articles
+
+    client = anthropic.Anthropic(api_key=api_key)
+    en_indices = [i for i, a in enumerate(articles) if a.get("lang") == "en"]
+
+    if not en_indices:
+        return articles
+
+    print(f"Translating {len(en_indices)} English articles in batches of {TRANSLATE_BATCH_SIZE}...")
+
+    for start in range(0, len(en_indices), TRANSLATE_BATCH_SIZE):
+        batch_indices = en_indices[start:start + TRANSLATE_BATCH_SIZE]
+        batch = [
+            {"idx": i, "title": articles[i]["title"], "summary": articles[i]["summary"]}
+            for i in batch_indices
+        ]
+        translated_map = _translate_batch(client, batch)
+
+        for i in batch_indices:
+            if i in translated_map:
+                t = translated_map[i]
+                articles[i]["title"]   = t.get("title",   articles[i]["title"])
+                articles[i]["summary"] = t.get("summary", articles[i]["summary"])
+
+        batch_num = start // TRANSLATE_BATCH_SIZE + 1
+        total_batches = (len(en_indices) + TRANSLATE_BATCH_SIZE - 1) // TRANSLATE_BATCH_SIZE
+        print(f"  Batch {batch_num}/{total_batches} done.")
+
+    return articles
+
+
+# ---------------------------------------------------------------------------
+# HTML generation
+# ---------------------------------------------------------------------------
+
 def build_html(articles, source_status, generated_at):
-    sources_json   = json.dumps(source_status, ensure_ascii=False)
-    articles_json  = json.dumps(articles,       ensure_ascii=False)
+    sources_json    = json.dumps(source_status, ensure_ascii=False)
+    articles_json   = json.dumps(articles,      ensure_ascii=False)
     feed_names_json = json.dumps([f["name"] for f in FEEDS], ensure_ascii=False)
 
     return f"""<!DOCTYPE html>
@@ -174,7 +263,7 @@ def build_html(articles, source_status, generated_at):
   </nav>
 
   <div class="schedule-bar text-center py-1 small">
-    自動更新: 毎日 <strong>09:00 JST</strong> / <strong>15:00 JST</strong>
+    自動更新: <strong>毎時00分</strong> &nbsp;|&nbsp; 英語記事は日本語に翻訳済み
   </div>
 
   <div class="container-fluid py-2 px-2 px-md-3">
@@ -227,7 +316,6 @@ def build_html(articles, source_status, generated_at):
     const SOURCE_STATUS = {sources_json};
     const FEED_NAMES = {feed_names_json};
 
-    // Build source filter buttons dynamically
     (function() {{
       const grp = document.getElementById('source-filters');
       FEED_NAMES.forEach((name, i) => {{
@@ -239,7 +327,6 @@ def build_html(articles, source_status, generated_at):
       }});
     }})();
 
-    // Source status
     (function() {{
       const bar = document.getElementById('source-status');
       Object.entries(SOURCE_STATUS).forEach(([name, s]) => {{
@@ -279,10 +366,12 @@ def build_html(articles, source_status, generated_at):
         col.className = 'col-12 col-sm-6 col-xl-4';
         const exploitBadge = a.is_exploit ? '<span class="badge bg-danger me-1">&#9888; 悪用観測</span>' : '';
         const vulnBadge    = a.is_vuln    ? '<span class="badge bg-warning text-dark me-1">&#128274; 脆弱性</span>' : '';
+        const langBadge    = a.lang === 'en'
+          ? '<span class="badge bg-info text-dark me-1" title="機械翻訳">JA</span>' : '';
         col.innerHTML = `
           <div class="card h-100 shadow-sm article-card ${{a.is_exploit ? 'border-danger' : ''}}">
             <div class="card-body d-flex flex-column p-3">
-              <div class="mb-2">${{exploitBadge}}${{vulnBadge}}<span class="badge bg-secondary">${{escHtml(a.source)}}</span></div>
+              <div class="mb-2">${{exploitBadge}}${{vulnBadge}}<span class="badge bg-secondary">${{escHtml(a.source)}}</span>${{langBadge}}</div>
               <h6 class="card-title article-title">
                 <a href="${{escHtml(a.link)}}" target="_blank" rel="noopener noreferrer"
                    class="text-decoration-none link-dark stretched-link">${{escHtml(a.title)}}</a>
@@ -311,15 +400,20 @@ def build_html(articles, source_status, generated_at):
 """
 
 
+# ---------------------------------------------------------------------------
+# Entry point
+# ---------------------------------------------------------------------------
+
 def main():
     print("Fetching RSS feeds...")
     articles, source_status = fetch_all()
     total = sum(s["count"] for s in source_status.values())
     print(f"Fetched {total} matching articles from {len(FEEDS)} sources.")
 
+    articles = translate_articles(articles)
+
     os.makedirs(DOCS_DIR, exist_ok=True)
 
-    # Copy CSS
     src_css = os.path.join(os.path.dirname(__file__), "static", "style.css")
     dst_css = os.path.join(DOCS_DIR, "style.css")
     shutil.copy2(src_css, dst_css)

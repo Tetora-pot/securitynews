@@ -2,11 +2,8 @@ name: Update Security News
 
 on:
   schedule:
-    # 9:00 JST = 0:00 UTC
-    - cron: '0 0 * * *'
-    # 15:00 JST = 6:00 UTC
-    - cron: '0 6 * * *'
-  workflow_dispatch:  # 手動実行も可能
+    - cron: '0 * * * *'  # 毎時00分 UTC (= 毎時00分 JST+9)
+  workflow_dispatch:      # 手動実行も可能
 
 jobs:
   build-and-deploy:
@@ -23,7 +20,12 @@ jobs:
         with:
           python-version: '3.11'
 
+      - name: Install dependencies
+        run: pip install anthropic
+
       - name: Generate static site
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: python generate.py
 
       - name: Commit and push docs/
