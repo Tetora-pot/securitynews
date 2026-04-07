@@ -132,14 +132,16 @@ def fetch_feed(cfg):
             if not (is_exploit or is_vuln):
                 continue
 
+            pub_jst = pub_dt.astimezone(JST) if pub_dt != datetime.min.replace(tzinfo=timezone.utc) else None
             articles.append({
                 "source":       cfg["name"],
                 "lang":         lang,
                 "title":        title,
+                "title_en":     title,
                 "link":         link,
                 "summary":      summary[:300],
-                "published":    pub_dt.strftime("%Y-%m-%d %H:%M UTC")
-                                if pub_dt != datetime.min.replace(tzinfo=timezone.utc) else "",
+                "summary_en":   summary[:300],
+                "published":    pub_jst.strftime("%Y-%m-%d %H:%M JST") if pub_jst else "",
                 "published_ts": pub_dt.timestamp(),
                 "is_exploit":   is_exploit,
                 "is_vuln":      is_vuln,
@@ -275,6 +277,7 @@ def translate_articles(articles):
             for i in batch_indices:
                 if i in translated_map:
                     t = translated_map[i]
+                    # Save Japanese translation; keep originals in _en fields
                     articles[i]["title"]   = t.get("title",   articles[i]["title"])
                     articles[i]["summary"] = t.get("summary", articles[i]["summary"])
                     translated_count += 1
@@ -308,11 +311,20 @@ def build_html(articles, source_status, generated_at):
 
   <nav class="navbar navbar-dark bg-dark px-3 sticky-top">
     <span class="navbar-brand fw-bold fs-6">&#9888; CSIRT News Monitor</span>
-    <span class="text-light" style="font-size:0.72rem">生成: {generated_at}</span>
+    <div class="d-flex align-items-center gap-2">
+      <span class="text-light d-none d-sm-inline" style="font-size:0.72rem">生成: {generated_at}</span>
+      <!-- 言語トグル -->
+      <div class="btn-group btn-group-sm" role="group" aria-label="表示言語">
+        <input type="radio" class="btn-check" name="lang-mode" id="lang-ja" value="ja" checked />
+        <label class="btn btn-outline-light" for="lang-ja">日本語</label>
+        <input type="radio" class="btn-check" name="lang-mode" id="lang-en" value="en" />
+        <label class="btn btn-outline-light" for="lang-en">English</label>
+      </div>
+    </div>
   </nav>
 
   <div class="schedule-bar text-center py-1 small">
-    自動更新: <strong>毎時00分</strong> &nbsp;|&nbsp; 英語記事は日本語に翻訳済み
+    自動更新: <strong>毎時00分 (JST 6:00〜22:00)</strong> &nbsp;|&nbsp; 英語記事は機械翻訳
   </div>
 
   <div class="container-fluid py-2 px-2 px-md-3">
@@ -365,6 +377,7 @@ def build_html(articles, source_status, generated_at):
     const SOURCE_STATUS = {sources_json};
     const FEED_NAMES = {feed_names_json};
 
+    // Build source filter buttons
     (function() {{
       const grp = document.getElementById('source-filters');
       FEED_NAMES.forEach((name, i) => {{
@@ -376,6 +389,7 @@ def build_html(articles, source_status, generated_at):
       }});
     }})();
 
+    // Source status badges
     (function() {{
       const bar = document.getElementById('source-status');
       Object.entries(SOURCE_STATUS).forEach(([name, s]) => {{
@@ -387,16 +401,36 @@ def build_html(articles, source_status, generated_at):
       }});
     }})();
 
+    function getLangMode() {{
+      return document.querySelector('input[name="lang-mode"]:checked').value;
+    }}
+
+    function getTitle(a) {{
+      // English articles: switch by lang-mode; Japanese articles: always Japanese
+      if (a.lang === 'en' && getLangMode() === 'en') return a.title_en || a.title;
+      return a.title;
+    }}
+
+    function getSummary(a) {{
+      if (a.lang === 'en' && getLangMode() === 'en') return a.summary_en || a.summary;
+      return a.summary;
+    }}
+
     function renderArticles() {{
-      const filter  = document.querySelector('input[name="filter"]:checked').value;
-      const source  = document.querySelector('input[name="source"]:checked').value;
-      const keyword = document.getElementById('search-input').value.trim().toLowerCase();
+      const filter   = document.querySelector('input[name="filter"]:checked').value;
+      const source   = document.querySelector('input[name="source"]:checked').value;
+      const keyword  = document.getElementById('search-input').value.trim().toLowerCase();
+      const langMode = getLangMode();
 
       const filtered = ALL_ARTICLES.filter(a => {{
         if (filter === 'exploit' && !a.is_exploit) return false;
         if (filter === 'vuln'   && !a.is_vuln)    return false;
         if (source !== 'all'    && a.source !== source) return false;
-        if (keyword && !`${{a.title}} ${{a.summary}}`.toLowerCase().includes(keyword)) return false;
+        if (keyword) {{
+          // Search both title and summary in the currently selected language
+          const searchText = `${{getTitle(a)}} ${{getSummary(a)}}`.toLowerCase();
+          if (!searchText.includes(keyword)) return false;
+        }}
         return true;
       }});
 
@@ -415,17 +449,20 @@ def build_html(articles, source_status, generated_at):
         col.className = 'col-12 col-sm-6 col-xl-4';
         const exploitBadge = a.is_exploit ? '<span class="badge bg-danger me-1">&#9888; 悪用観測</span>' : '';
         const vulnBadge    = a.is_vuln    ? '<span class="badge bg-warning text-dark me-1">&#128274; 脆弱性</span>' : '';
-        const langBadge    = a.lang === 'en'
-          ? '<span class="badge bg-info text-dark me-1" title="機械翻訳">JA</span>' : '';
+        // Show translation badge only in JA mode for English-source articles
+        const transBadge   = (a.lang === 'en' && langMode === 'ja')
+          ? '<span class="badge bg-info text-dark me-1" title="機械翻訳">翻訳</span>' : '';
+        const title   = getTitle(a);
+        const summary = getSummary(a);
         col.innerHTML = `
           <div class="card h-100 shadow-sm article-card ${{a.is_exploit ? 'border-danger' : ''}}">
             <div class="card-body d-flex flex-column p-3">
-              <div class="mb-2">${{exploitBadge}}${{vulnBadge}}<span class="badge bg-secondary">${{escHtml(a.source)}}</span>${{langBadge}}</div>
+              <div class="mb-2">${{exploitBadge}}${{vulnBadge}}<span class="badge bg-secondary">${{escHtml(a.source)}}</span>${{transBadge}}</div>
               <h6 class="card-title article-title">
                 <a href="${{escHtml(a.link)}}" target="_blank" rel="noopener noreferrer"
-                   class="text-decoration-none link-dark stretched-link">${{escHtml(a.title)}}</a>
+                   class="text-decoration-none link-dark stretched-link">${{escHtml(title)}}</a>
               </h6>
-              <p class="card-text text-secondary article-summary flex-grow-1">${{escHtml(a.summary)}}${{a.summary.length >= 300 ? '...' : ''}}</p>
+              <p class="card-text text-secondary article-summary flex-grow-1">${{escHtml(summary)}}${{summary.length >= 300 ? '...' : ''}}</p>
               <div class="text-muted article-date mt-2">${{escHtml(a.published)}}</div>
             </div>
           </div>`;
@@ -437,7 +474,7 @@ def build_html(articles, source_status, generated_at):
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }}
 
-    document.querySelectorAll('input[name="filter"], input[name="source"]').forEach(el =>
+    document.querySelectorAll('input[name="filter"], input[name="source"], input[name="lang-mode"]').forEach(el =>
       el.addEventListener('change', renderArticles)
     );
     document.getElementById('search-input').addEventListener('input', renderArticles);
