@@ -1,35 +1,47 @@
 /* ===== Base ===== */
 body {
-  background-color: #f0f2f5;
   font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
 }
+[data-bs-theme="light"] body { background-color: #f0f2f5; }
+[data-bs-theme="dark"]  body { background-color: #0d1117; }
 
 /* ===== Navbar ===== */
 .navbar {
   border-bottom: 2px solid #dc3545;
-  z-index: 1030;
+  background-color: #111827 !important;
 }
 
-/* ===== Schedule info bar ===== */
+/* ===== Schedule bar ===== */
 .schedule-bar {
-  background: #1a1e2e;
-  color: #9ca3af;
   font-size: 0.75rem;
   letter-spacing: 0.01em;
 }
-.schedule-bar strong {
-  color: #60a5fa;
+[data-bs-theme="light"] .schedule-bar {
+  background: #1a1e2e;
+  color: #9ca3af;
 }
+[data-bs-theme="light"] .schedule-bar strong { color: #60a5fa; }
+[data-bs-theme="dark"] .schedule-bar {
+  background: #060a14;
+  color: #6b7280;
+}
+[data-bs-theme="dark"] .schedule-bar strong { color: #3b82f6; }
 
 /* ===== Filter bar ===== */
 .filter-bar {
-  background: #fff;
   border-radius: 10px;
   padding: 10px 12px;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
   display: flex;
   flex-direction: column;
   gap: 8px;
+}
+[data-bs-theme="light"] .filter-bar {
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.07);
+}
+[data-bs-theme="dark"] .filter-bar {
+  background: var(--bs-tertiary-bg);
+  border: 1px solid var(--bs-border-color);
 }
 
 .filter-row {
@@ -37,16 +49,13 @@ body {
   align-items: center;
   gap: 8px;
 }
-
 .filter-label {
   font-size: 0.72rem;
   font-weight: 600;
-  color: #6b7280;
+  color: var(--bs-secondary-color);
   white-space: nowrap;
-  min-width: 2.5rem;
+  min-width: 2.8rem;
 }
-
-/* Allow horizontal scroll on small screens without showing scrollbar */
 .filter-scroll {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
@@ -54,74 +63,53 @@ body {
 }
 .filter-scroll::-webkit-scrollbar { display: none; }
 
-/* Make btn-group labels bigger on mobile for tap targets */
 @media (max-width: 576px) {
-  .btn-group-sm > .btn {
-    padding: 0.3rem 0.6rem;
-    font-size: 0.78rem;
-  }
-  .filter-label {
-    min-width: 2rem;
-  }
+  .btn-group-sm > .btn { padding: 0.3rem 0.6rem; font-size: 0.78rem; }
+  .filter-label { min-width: 2.2rem; }
 }
 
 /* ===== Source status badges ===== */
-.source-badge {
-  font-size: 0.72rem;
-  cursor: default;
-}
+.source-badge { font-size: 0.72rem; cursor: default; }
 
 /* ===== Article cards ===== */
 .article-card {
   border-radius: 10px;
-  transition: transform 0.12s ease, box-shadow 0.12s ease;
-  border: 1px solid #e5e7eb;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, opacity 0.2s ease;
 }
-
 @media (hover: hover) {
   .article-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 18px rgba(0,0,0,0.10) !important;
+    box-shadow: 0 6px 18px rgba(0,0,0,0.12) !important;
   }
 }
-
-.article-card.border-danger {
-  border-width: 2px !important;
-  border-color: #dc3545 !important;
+[data-bs-theme="dark"] .article-card:hover {
+  box-shadow: 0 6px 20px rgba(0,0,0,0.5) !important;
 }
 
-.article-title {
-  font-size: 0.9rem;
-  line-height: 1.4;
-  margin-bottom: 0.4rem;
+.article-card.border-danger { border-width: 2px !important; border-color: #dc3545 !important; }
+
+/* Confirmed / checked articles */
+.article-card.is-checked { opacity: 0.45; }
+[data-bs-theme="dark"] .article-card.is-checked { opacity: 0.35; }
+
+/* ===== Checkbox (confirmed mark) ===== */
+.checked-label {
+  position: relative;
+  z-index: 5;   /* above stretched-link overlay */
+  cursor: pointer;
+  line-height: 1;
+}
+.checked-label .form-check-input {
+  width: 1.1em;
+  height: 1.1em;
+  cursor: pointer;
 }
 
-.article-title a:hover {
-  color: #0d6efd !important;
-}
+/* ===== Typography ===== */
+.article-title  { font-size: 0.9rem; line-height: 1.4; margin-bottom: 0.4rem; }
+.article-summary { font-size: 0.8rem; line-height: 1.5; }
+.article-date   { font-size: 0.72rem; color: var(--bs-secondary-color); }
+.badge          { font-size: 0.68rem; }
 
-.article-summary {
-  font-size: 0.8rem;
-  line-height: 1.5;
-  color: #6b7280 !important;
-}
-
-.article-date {
-  font-size: 0.72rem;
-  color: #9ca3af;
-}
-
-/* ===== Badge sizing ===== */
-.badge {
-  font-size: 0.68rem;
-}
-
-/* ===== Mobile full-width search ===== */
-@media (max-width: 576px) {
-  .filter-row:last-child {
-    flex-wrap: wrap;
-  }
-  #search-input {
-    min-width: 0;
-  }
-}
+/* ===== Dark mode toggle icon ===== */
+#dark-toggle { font-size: 0.9rem; line-height: 1; }

@@ -299,7 +299,7 @@ def build_html(articles, source_status, generated_at):
     feed_names_json = json.dumps([f["name"] for f in FEEDS], ensure_ascii=False)
 
     return f"""<!DOCTYPE html>
-<html lang="ja">
+<html lang="ja" data-bs-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -309,32 +309,34 @@ def build_html(articles, source_status, generated_at):
 </head>
 <body>
 
-  <nav class="navbar navbar-dark bg-dark px-3 sticky-top">
-    <span class="navbar-brand fw-bold fs-6">&#9888; CSIRT News Monitor</span>
-    <span class="text-light" style="font-size:0.72rem">生成: {generated_at}</span>
+  <!-- ===== Navbar ===== -->
+  <nav class="navbar navbar-dark bg-dark sticky-top">
+    <div class="container-fluid px-3">
+      <span class="navbar-brand fw-bold me-auto">&#9888; CSIRT News Monitor</span>
+      <div class="d-flex align-items-center gap-2 flex-shrink-0">
+        <span class="text-light d-none d-md-inline" style="font-size:0.7rem">生成: {generated_at}</span>
+        <!-- 言語トグル (コンパクト) -->
+        <div class="btn-group btn-group-sm" role="group">
+          <input type="radio" class="btn-check" name="lang-mode" id="lang-ja" value="ja" />
+          <label class="btn btn-outline-light" for="lang-ja">JA</label>
+          <input type="radio" class="btn-check" name="lang-mode" id="lang-en" value="en" />
+          <label class="btn btn-outline-light" for="lang-en">EN</label>
+        </div>
+        <!-- ダークモードトグル -->
+        <button class="btn btn-sm btn-outline-light" id="dark-toggle" title="ダーク/ライト切替">&#9790;</button>
+      </div>
+    </div>
   </nav>
 
+  <!-- ===== Schedule bar ===== -->
   <div class="schedule-bar text-center py-1 small">
     自動更新: <strong>毎時00分 (JST 6:00〜22:00)</strong>
   </div>
 
+  <!-- ===== Main ===== -->
   <div class="container-fluid py-2 px-2 px-md-3">
 
     <div class="filter-bar mb-2">
-
-      <!-- 言語切替 -->
-      <div class="filter-row">
-        <span class="filter-label">言語</span>
-        <div class="filter-scroll">
-          <div class="btn-group btn-group-sm" role="group">
-            <input type="radio" class="btn-check" name="lang-mode" id="lang-ja" value="ja" checked />
-            <label class="btn btn-outline-primary" for="lang-ja">&#127479;&#127475; 日本語</label>
-            <input type="radio" class="btn-check" name="lang-mode" id="lang-en" value="en" />
-            <label class="btn btn-outline-primary" for="lang-en">&#127468;&#127463; English</label>
-          </div>
-        </div>
-      </div>
-
       <div class="filter-row">
         <span class="filter-label">種別</span>
         <div class="filter-scroll">
@@ -345,6 +347,20 @@ def build_html(articles, source_status, generated_at):
             <label class="btn btn-outline-danger" for="filter-exploit">&#9888; 悪用観測</label>
             <input type="radio" class="btn-check" name="filter" id="filter-vuln" value="vuln" />
             <label class="btn btn-outline-warning" for="filter-vuln">&#128274; 脆弱性</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="filter-row">
+        <span class="filter-label">確認</span>
+        <div class="filter-scroll">
+          <div class="btn-group btn-group-sm" role="group">
+            <input type="radio" class="btn-check" name="read-filter" id="rf-all" value="all" checked />
+            <label class="btn btn-outline-secondary" for="rf-all">すべて</label>
+            <input type="radio" class="btn-check" name="read-filter" id="rf-unread" value="unread" />
+            <label class="btn btn-outline-primary" for="rf-unread">未確認のみ</label>
+            <input type="radio" class="btn-check" name="read-filter" id="rf-read" value="read" />
+            <label class="btn btn-outline-success" for="rf-read">確認済みのみ</label>
           </div>
         </div>
       </div>
@@ -382,7 +398,50 @@ def build_html(articles, source_status, generated_at):
     const SOURCE_STATUS = {sources_json};
     const FEED_NAMES = {feed_names_json};
 
-    // Build source filter buttons
+    // ===== Persistence keys =====
+    const KEY_THEME   = 'csirt:theme';
+    const KEY_LANG    = 'csirt:lang';
+    const KEY_CHECKED = 'csirt:checked'; // JSON array of checked URLs
+
+    // ===== Dark mode =====
+    let checkedSet = new Set(JSON.parse(localStorage.getItem(KEY_CHECKED) || '[]'));
+
+    function applyTheme(theme) {{
+      document.documentElement.setAttribute('data-bs-theme', theme);
+      document.getElementById('dark-toggle').textContent = theme === 'dark' ? '☀' : '☾';
+    }}
+    function toggleTheme() {{
+      const next = document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
+      localStorage.setItem(KEY_THEME, next);
+      applyTheme(next);
+    }}
+    document.getElementById('dark-toggle').addEventListener('click', toggleTheme);
+    applyTheme(localStorage.getItem(KEY_THEME) || 'light');
+
+    // ===== Language mode =====
+    (function() {{
+      const saved = localStorage.getItem(KEY_LANG) || 'ja';
+      const el = document.getElementById('lang-' + saved);
+      if (el) el.checked = true;
+    }})();
+    document.querySelectorAll('input[name="lang-mode"]').forEach(el =>
+      el.addEventListener('change', () => {{
+        localStorage.setItem(KEY_LANG, el.value);
+        renderArticles();
+      }})
+    );
+
+    function getLangMode() {{
+      return document.querySelector('input[name="lang-mode"]:checked')?.value || 'ja';
+    }}
+    function getTitle(a) {{
+      return (a.lang === 'en' && getLangMode() === 'en') ? (a.title_en || a.title) : a.title;
+    }}
+    function getSummary(a) {{
+      return (a.lang === 'en' && getLangMode() === 'en') ? (a.summary_en || a.summary) : a.summary;
+    }}
+
+    // ===== Source filters =====
     (function() {{
       const grp = document.getElementById('source-filters');
       FEED_NAMES.forEach((name, i) => {{
@@ -394,7 +453,7 @@ def build_html(articles, source_status, generated_at):
       }});
     }})();
 
-    // Source status badges
+    // ===== Source status =====
     (function() {{
       const bar = document.getElementById('source-status');
       Object.entries(SOURCE_STATUS).forEach(([name, s]) => {{
@@ -406,35 +465,41 @@ def build_html(articles, source_status, generated_at):
       }});
     }})();
 
-    function getLangMode() {{
-      return document.querySelector('input[name="lang-mode"]:checked').value;
+    // ===== Checked articles =====
+    function saveChecked() {{
+      localStorage.setItem(KEY_CHECKED, JSON.stringify([...checkedSet]));
+    }}
+    function toggleChecked(url) {{
+      if (checkedSet.has(url)) checkedSet.delete(url); else checkedSet.add(url);
+      saveChecked();
+      // Update card style without full re-render
+      document.querySelectorAll(`.article-check[data-url="${{CSS.escape(url)}}"]`).forEach(cb => {{
+        cb.checked = checkedSet.has(url);
+        cb.closest('.article-card').classList.toggle('is-checked', checkedSet.has(url));
+      }});
+      // Re-count if filtering by read/unread
+      const rf = document.querySelector('input[name="read-filter"]:checked')?.value;
+      if (rf !== 'all') renderArticles();
+      else document.getElementById('article-count').textContent = `${{document.querySelectorAll('#articles-container .col-12').length}} 件`;
     }}
 
-    function getTitle(a) {{
-      // English articles: switch by lang-mode; Japanese articles: always Japanese
-      if (a.lang === 'en' && getLangMode() === 'en') return a.title_en || a.title;
-      return a.title;
-    }}
-
-    function getSummary(a) {{
-      if (a.lang === 'en' && getLangMode() === 'en') return a.summary_en || a.summary;
-      return a.summary;
-    }}
-
+    // ===== Render =====
     function renderArticles() {{
       const filter   = document.querySelector('input[name="filter"]:checked').value;
       const source   = document.querySelector('input[name="source"]:checked').value;
       const keyword  = document.getElementById('search-input').value.trim().toLowerCase();
       const langMode = getLangMode();
+      const rf       = document.querySelector('input[name="read-filter"]:checked').value;
 
       const filtered = ALL_ARTICLES.filter(a => {{
         if (filter === 'exploit' && !a.is_exploit) return false;
         if (filter === 'vuln'   && !a.is_vuln)    return false;
         if (source !== 'all'    && a.source !== source) return false;
+        if (rf === 'unread' &&  checkedSet.has(a.link)) return false;
+        if (rf === 'read'   && !checkedSet.has(a.link)) return false;
         if (keyword) {{
-          // Search both title and summary in the currently selected language
-          const searchText = `${{getTitle(a)}} ${{getSummary(a)}}`.toLowerCase();
-          if (!searchText.includes(keyword)) return false;
+          const t = `${{getTitle(a)}} ${{getSummary(a)}}`.toLowerCase();
+          if (!t.includes(keyword)) return false;
         }}
         return true;
       }});
@@ -450,27 +515,41 @@ def build_html(articles, source_status, generated_at):
       document.getElementById('empty-state').classList.add('d-none');
 
       filtered.forEach(a => {{
-        const col = document.createElement('div');
-        col.className = 'col-12 col-sm-6 col-xl-4';
+        const isChecked  = checkedSet.has(a.link);
+        const col        = document.createElement('div');
+        col.className    = 'col-12 col-sm-6 col-xl-4';
         const exploitBadge = a.is_exploit ? '<span class="badge bg-danger me-1">&#9888; 悪用観測</span>' : '';
         const vulnBadge    = a.is_vuln    ? '<span class="badge bg-warning text-dark me-1">&#128274; 脆弱性</span>' : '';
-        // Show translation badge only in JA mode for English-source articles
         const transBadge   = (a.lang === 'en' && langMode === 'ja')
           ? '<span class="badge bg-info text-dark me-1" title="機械翻訳">翻訳</span>' : '';
-        const title   = getTitle(a);
-        const summary = getSummary(a);
+        const title   = escHtml(getTitle(a));
+        const summary = escHtml(getSummary(a));
+        const url     = escHtml(a.link);
+        const cbId    = 'cb-' + btoa(encodeURIComponent(a.link)).replace(/[^a-z0-9]/gi,'').slice(0,12);
+
         col.innerHTML = `
-          <div class="card h-100 shadow-sm article-card ${{a.is_exploit ? 'border-danger' : ''}}">
+          <div class="card h-100 shadow-sm article-card${{a.is_exploit ? ' border-danger' : ''}}${{isChecked ? ' is-checked' : ''}}">
             <div class="card-body d-flex flex-column p-3">
-              <div class="mb-2">${{exploitBadge}}${{vulnBadge}}<span class="badge bg-secondary">${{escHtml(a.source)}}</span>${{transBadge}}</div>
+              <div class="d-flex justify-content-between align-items-start mb-2">
+                <div class="article-badges">${{exploitBadge}}${{vulnBadge}}<span class="badge bg-secondary">${{escHtml(a.source)}}</span>${{transBadge}}</div>
+                <label class="checked-label flex-shrink-0 ms-2" title="確認済みとしてマーク">
+                  <input type="checkbox" class="form-check-input article-check" id="${{cbId}}"
+                         data-url="${{url}}" ${{isChecked ? 'checked' : ''}} />
+                </label>
+              </div>
               <h6 class="card-title article-title">
-                <a href="${{escHtml(a.link)}}" target="_blank" rel="noopener noreferrer"
-                   class="text-decoration-none link-dark stretched-link">${{escHtml(title)}}</a>
+                <a href="${{url}}" target="_blank" rel="noopener noreferrer"
+                   class="text-decoration-none link-body-emphasis stretched-link">${{title}}</a>
               </h6>
-              <p class="card-text text-secondary article-summary flex-grow-1">${{escHtml(summary)}}${{summary.length >= 300 ? '...' : ''}}</p>
+              <p class="card-text text-secondary article-summary flex-grow-1">${{summary}}${{a.summary.length >= 300 ? '...' : ''}}</p>
               <div class="text-muted article-date mt-2">${{escHtml(a.published)}}</div>
             </div>
           </div>`;
+
+        // Attach checkbox event (after DOM insert)
+        col.querySelector('.article-check').addEventListener('change', function() {{
+          toggleChecked(this.dataset.url);
+        }});
         container.appendChild(col);
       }});
     }}
@@ -479,7 +558,7 @@ def build_html(articles, source_status, generated_at):
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }}
 
-    document.querySelectorAll('input[name="filter"], input[name="source"], input[name="lang-mode"]').forEach(el =>
+    document.querySelectorAll('input[name="filter"], input[name="source"], input[name="read-filter"]').forEach(el =>
       el.addEventListener('change', renderArticles)
     );
     document.getElementById('search-input').addEventListener('input', renderArticles);
