@@ -311,25 +311,30 @@ def build_html(articles, source_status, generated_at):
 
   <nav class="navbar navbar-dark bg-dark px-3 sticky-top">
     <span class="navbar-brand fw-bold fs-6">&#9888; CSIRT News Monitor</span>
-    <div class="d-flex align-items-center gap-2">
-      <span class="text-light d-none d-sm-inline" style="font-size:0.72rem">生成: {generated_at}</span>
-      <!-- 言語トグル -->
-      <div class="btn-group btn-group-sm" role="group" aria-label="表示言語">
-        <input type="radio" class="btn-check" name="lang-mode" id="lang-ja" value="ja" checked />
-        <label class="btn btn-outline-light" for="lang-ja">日本語</label>
-        <input type="radio" class="btn-check" name="lang-mode" id="lang-en" value="en" />
-        <label class="btn btn-outline-light" for="lang-en">English</label>
-      </div>
-    </div>
+    <span class="text-light" style="font-size:0.72rem">生成: {generated_at}</span>
   </nav>
 
   <div class="schedule-bar text-center py-1 small">
-    自動更新: <strong>毎時00分 (JST 6:00〜22:00)</strong> &nbsp;|&nbsp; 英語記事は機械翻訳
+    自動更新: <strong>毎時00分 (JST 6:00〜22:00)</strong>
   </div>
 
   <div class="container-fluid py-2 px-2 px-md-3">
 
     <div class="filter-bar mb-2">
+
+      <!-- 言語切替 -->
+      <div class="filter-row">
+        <span class="filter-label">言語</span>
+        <div class="filter-scroll">
+          <div class="btn-group btn-group-sm" role="group">
+            <input type="radio" class="btn-check" name="lang-mode" id="lang-ja" value="ja" checked />
+            <label class="btn btn-outline-primary" for="lang-ja">&#127479;&#127475; 日本語</label>
+            <input type="radio" class="btn-check" name="lang-mode" id="lang-en" value="en" />
+            <label class="btn btn-outline-primary" for="lang-en">&#127468;&#127463; English</label>
+          </div>
+        </div>
+      </div>
+
       <div class="filter-row">
         <span class="filter-label">種別</span>
         <div class="filter-scroll">
