@@ -4,7 +4,11 @@ on:
   schedule:
     # JST 6:00〜22:00 の毎時00分 (UTC 21:00〜13:00)
     - cron: '0 21-23,0-13 * * *'
-  workflow_dispatch:      # 手動実行も可能
+  push:
+    branches:
+      - claude/security-news-monitor-NxZxs
+      - main
+  workflow_dispatch:
 
 jobs:
   build-and-deploy:
