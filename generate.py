@@ -164,39 +164,76 @@ def fetch_all():
 # Translation (Claude API)
 # ---------------------------------------------------------------------------
 
-def _translate_batch(client, batch):
+# 利用可能なモデルを順に試す（新しい順）
+TRANSLATION_MODELS = [
+    "claude-haiku-4-5-20251001",
+    "claude-3-5-haiku-20241022",
+    "claude-3-haiku-20240307",
+]
+
+
+def _detect_model(client):
+    """Use the first available translation model."""
+    for model in TRANSLATION_MODELS:
+        try:
+            client.messages.create(
+                model=model,
+                max_tokens=10,
+                messages=[{"role": "user", "content": "hi"}],
+            )
+            print(f"[INFO] Using translation model: {model}")
+            return model
+        except Exception as e:
+            msg = str(e)
+            if "not_found_error" in msg or "model" in msg.lower():
+                print(f"[INFO] Model {model} not available, trying next...", file=sys.stderr)
+                continue
+            # Other errors (auth, rate limit) — re-raise
+            raise
+    raise RuntimeError(f"No available translation model found. Tried: {TRANSLATION_MODELS}")
+
+
+def _translate_batch(client, model, batch):
     """
     batch: [{"idx": int, "title": str, "summary": str}, ...]
-    Returns the same list with title/summary replaced by Japanese.
-    Falls back to original on any error.
+    Returns dict of {idx: translated_item} on success, {} on failure.
     """
     prompt = (
-        "以下はセキュリティニュースの英語記事リストです。"
+        "以下はセキュリティニュースの英語記事リストです。\n"
         "各記事のtitleとsummaryを自然な日本語に翻訳してください。\n"
-        "・専門用語（CVE番号、製品名、固有名詞）はそのまま残す\n"
-        "・同じJSON配列形式で返す（idフィールドは変更しない）\n"
-        "・JSONのみ返す（説明文は不要）\n\n"
+        "ルール:\n"
+        "- CVE番号・製品名・固有名詞はそのまま残す\n"
+        "- 入力と同じJSON配列形式で返す（idxフィールドは変更しない）\n"
+        "- JSONのみ返す（前置きや説明は不要）\n\n"
         + json.dumps(batch, ensure_ascii=False)
     )
     try:
         msg = client.messages.create(
-            model="claude-haiku-4-5-20251001",
+            model=model,
             max_tokens=4096,
             messages=[{"role": "user", "content": prompt}],
         )
         text = msg.content[0].text.strip()
-        # Extract JSON array robustly
+        # Extract JSON array (handle markdown code blocks too)
         m = re.search(r"\[.*\]", text, re.DOTALL)
-        if m:
-            translated = json.loads(m.group())
-            return {item["idx"]: item for item in translated}
+        if not m:
+            print(f"[WARN] No JSON array found in response: {text[:200]}", file=sys.stderr)
+            return {}
+        translated = json.loads(m.group())
+        return {item["idx"]: item for item in translated}
+    except json.JSONDecodeError as e:
+        print(f"[WARN] JSON parse error in translation response: {e}", file=sys.stderr)
+        return {}
     except Exception as e:
-        print(f"[WARN] Translation batch failed: {e}", file=sys.stderr)
-    return {}
+        print(f"[ERROR] Translation API call failed: {e}", file=sys.stderr)
+        raise
 
 
 def translate_articles(articles):
-    """Translate English articles in-place using Claude API. Skips if API key not set."""
+    """Translate English articles to Japanese using Claude API.
+    Skips silently if ANTHROPIC_API_KEY is not set.
+    Raises on API auth errors so the CI job fails visibly.
+    """
     api_key = os.environ.get("ANTHROPIC_API_KEY", "")
     if not api_key:
         print("[INFO] ANTHROPIC_API_KEY not set — skipping translation.")
@@ -205,35 +242,47 @@ def translate_articles(articles):
     try:
         import anthropic
     except ImportError:
-        print("[WARN] anthropic package not installed — skipping translation.", file=sys.stderr)
-        return articles
+        print("[ERROR] anthropic package not installed. Run: pip install anthropic", file=sys.stderr)
+        sys.exit(1)
 
+    print("[INFO] Initializing Anthropic client...")
     client = anthropic.Anthropic(api_key=api_key)
-    en_indices = [i for i, a in enumerate(articles) if a.get("lang") == "en"]
 
+    try:
+        model = _detect_model(client)
+    except Exception as e:
+        print(f"[ERROR] Failed to connect to Anthropic API: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    en_indices = [i for i, a in enumerate(articles) if a.get("lang") == "en"]
     if not en_indices:
+        print("[INFO] No English articles to translate.")
         return articles
 
-    print(f"Translating {len(en_indices)} English articles in batches of {TRANSLATE_BATCH_SIZE}...")
+    total_batches = (len(en_indices) + TRANSLATE_BATCH_SIZE - 1) // TRANSLATE_BATCH_SIZE
+    print(f"Translating {len(en_indices)} English articles ({total_batches} batches)...")
 
+    translated_count = 0
     for start in range(0, len(en_indices), TRANSLATE_BATCH_SIZE):
         batch_indices = en_indices[start:start + TRANSLATE_BATCH_SIZE]
         batch = [
             {"idx": i, "title": articles[i]["title"], "summary": articles[i]["summary"]}
             for i in batch_indices
         ]
-        translated_map = _translate_batch(client, batch)
-
-        for i in batch_indices:
-            if i in translated_map:
-                t = translated_map[i]
-                articles[i]["title"]   = t.get("title",   articles[i]["title"])
-                articles[i]["summary"] = t.get("summary", articles[i]["summary"])
-
         batch_num = start // TRANSLATE_BATCH_SIZE + 1
-        total_batches = (len(en_indices) + TRANSLATE_BATCH_SIZE - 1) // TRANSLATE_BATCH_SIZE
-        print(f"  Batch {batch_num}/{total_batches} done.")
+        try:
+            translated_map = _translate_batch(client, model, batch)
+            for i in batch_indices:
+                if i in translated_map:
+                    t = translated_map[i]
+                    articles[i]["title"]   = t.get("title",   articles[i]["title"])
+                    articles[i]["summary"] = t.get("summary", articles[i]["summary"])
+                    translated_count += 1
+            print(f"  Batch {batch_num}/{total_batches} done ({len(translated_map)}/{len(batch)} translated).")
+        except Exception:
+            print(f"  Batch {batch_num}/{total_batches} failed — keeping English.", file=sys.stderr)
 
+    print(f"Translation complete: {translated_count}/{len(en_indices)} articles translated.")
     return articles
 
 
