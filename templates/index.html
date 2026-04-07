@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CSIRT Security News Monitor</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+</head>
+<body>
+  <nav class="navbar navbar-dark bg-dark px-3">
+    <span class="navbar-brand fw-bold">
+      <span class="text-danger">&#9888;</span> CSIRT Security News Monitor
+    </span>
+    <div class="d-flex align-items-center gap-3">
+      <span class="text-light small" id="last-updated"></span>
+      <button class="btn btn-sm btn-outline-light" id="refresh-btn" onclick="loadNews()">
+        &#8635; 更新
+      </button>
+    </div>
+  </nav>
+
+  <div class="container-fluid py-3">
+    <!-- Filter bar -->
+    <div class="row g-2 mb-3 align-items-center">
+      <div class="col-auto">
+        <label class="form-label mb-0 fw-semibold text-secondary small">フィルター</label>
+      </div>
+      <div class="col-auto">
+        <div class="btn-group btn-group-sm" role="group">
+          <input type="radio" class="btn-check" name="filter" id="filter-all" value="all" checked />
+          <label class="btn btn-outline-secondary" for="filter-all">すべて</label>
+          <input type="radio" class="btn-check" name="filter" id="filter-exploit" value="exploit" />
+          <label class="btn btn-outline-danger" for="filter-exploit">&#9888; 悪用観測</label>
+          <input type="radio" class="btn-check" name="filter" id="filter-vuln" value="vuln" />
+          <label class="btn btn-outline-warning" for="filter-vuln">&#128274; 脆弱性情報</label>
+        </div>
+      </div>
+      <div class="col-auto">
+        <div class="btn-group btn-group-sm" role="group">
+          <input type="radio" class="btn-check" name="source" id="src-all" value="all" checked />
+          <label class="btn btn-outline-secondary" for="src-all">全ソース</label>
+          {% for f in feeds %}
+          <input type="radio" class="btn-check" name="source" id="src-{{ loop.index }}" value="{{ f.name }}" />
+          <label class="btn btn-outline-info" for="src-{{ loop.index }}">{{ f.name }}</label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="col">
+        <input type="text" class="form-control form-control-sm" id="search-input" placeholder="キーワード検索..." />
+      </div>
+      <div class="col-auto text-secondary small" id="article-count"></div>
+    </div>
+
+    <!-- Source status bar -->
+    <div id="source-status" class="d-flex gap-2 mb-2 flex-wrap d-none"></div>
+
+    <!-- Status bar -->
+    <div id="status-bar" class="alert alert-info py-2 d-none" role="alert"></div>
+
+    <!-- Loading spinner -->
+    <div id="loading" class="text-center py-5">
+      <div class="spinner-border text-primary" role="status"></div>
+      <p class="mt-2 text-secondary">ニュースを取得中...</p>
+    </div>
+
+    <!-- Articles grid -->
+    <div id="articles-container" class="row g-3" style="display:none !important"></div>
+
+    <!-- Empty state -->
+    <div id="empty-state" class="text-center py-5 d-none text-secondary">
+      <div style="font-size:3rem">&#128269;</div>
+      <p>条件に一致する記事が見つかりませんでした。</p>
+    </div>
+  </div>
+
+  <script>
+    let allArticles = [];
+
+    async function loadNews() {
+      const btn = document.getElementById('refresh-btn');
+      btn.disabled = true;
+      btn.textContent = '取得中...';
+      document.getElementById('loading').style.display = 'block';
+      document.getElementById('articles-container').style.setProperty('display', 'none', 'important');
+      document.getElementById('empty-state').classList.add('d-none');
+      document.getElementById('status-bar').classList.add('d-none');
+
+      try {
+        const res = await fetch('/api/news');
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        allArticles = data.articles;
+        renderSourceStatus(data.sources);
+        document.getElementById('last-updated').textContent =
+          '最終更新: ' + new Date().toLocaleTimeString('ja-JP');
+        renderArticles();
+      } catch (e) {
+        showStatus('ニュースの取得に失敗しました: ' + e.message, 'danger');
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '↻ 更新';
+        document.getElementById('loading').style.display = 'none';
+      }
+    }
+
+    function renderSourceStatus(sources) {
+      const bar = document.getElementById('source-status');
+      if (!sources) { bar.classList.add('d-none'); return; }
+      bar.classList.remove('d-none');
+      bar.innerHTML = Object.entries(sources).map(([name, s]) => {
+        const cls = s.ok ? 'bg-success' : 'bg-danger';
+        const icon = s.ok ? '&#10003;' : '&#10007;';
+        const tip = s.ok ? `${s.count}件取得` : `エラー: ${s.error}`;
+        return `<span class="badge ${cls}" title="${escHtml(tip)}">${icon} ${escHtml(name)}</span>`;
+      }).join('');
+    }
+
+    function showStatus(msg, type = 'info') {
+      const bar = document.getElementById('status-bar');
+      bar.className = `alert alert-${type} py-2`;
+      bar.textContent = msg;
+      bar.classList.remove('d-none');
+    }
+
+    function renderArticles() {
+      const filter = document.querySelector('input[name="filter"]:checked').value;
+      const source = document.querySelector('input[name="source"]:checked').value;
+      const keyword = document.getElementById('search-input').value.trim().toLowerCase();
+
+      const filtered = allArticles.filter(a => {
+        if (filter === 'exploit' && !a.is_exploit) return false;
+        if (filter === 'vuln' && !a.is_vuln) return false;
+        if (source !== 'all' && a.source !== source) return false;
+        if (keyword) {
+          const text = `${a.title} ${a.summary}`.toLowerCase();
+          if (!text.includes(keyword)) return false;
+        }
+        return true;
+      });
+
+      const container = document.getElementById('articles-container');
+      container.innerHTML = '';
+      document.getElementById('article-count').textContent = `${filtered.length} 件`;
+
+      if (filtered.length === 0) {
+        document.getElementById('empty-state').classList.remove('d-none');
+        container.style.setProperty('display', 'none', 'important');
+        return;
+      }
+
+      document.getElementById('empty-state').classList.add('d-none');
+      container.style.removeProperty('display');
+
+      filtered.forEach(a => {
+        const col = document.createElement('div');
+        col.className = 'col-12 col-md-6 col-xl-4';
+
+        const exploitBadge = a.is_exploit
+          ? '<span class="badge bg-danger me-1">&#9888; 悪用観測</span>'
+          : '';
+        const vulnBadge = a.is_vuln
+          ? '<span class="badge bg-warning text-dark me-1">&#128274; 脆弱性</span>'
+          : '';
+        const sourceBadge = `<span class="badge bg-secondary">${escHtml(a.source)}</span>`;
+
+        col.innerHTML = `
+          <div class="card h-100 shadow-sm article-card ${a.is_exploit ? 'border-danger' : ''}">
+            <div class="card-body d-flex flex-column">
+              <div class="mb-2">${exploitBadge}${vulnBadge}${sourceBadge}</div>
+              <h6 class="card-title">
+                <a href="${escHtml(a.link)}" target="_blank" rel="noopener noreferrer" class="text-decoration-none link-dark stretched-link">
+                  ${escHtml(a.title)}
+                </a>
+              </h6>
+              <p class="card-text text-secondary small flex-grow-1">${escHtml(a.summary)}${a.summary.length >= 300 ? '...' : ''}</p>
+              <div class="text-muted small mt-2">${escHtml(a.published)}</div>
+            </div>
+          </div>`;
+        container.appendChild(col);
+      });
+    }
+
+    function escHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    // Event listeners for filters
+    document.querySelectorAll('input[name="filter"], input[name="source"]').forEach(el => {
+      el.addEventListener('change', renderArticles);
+    });
+    document.getElementById('search-input').addEventListener('input', renderArticles);
+
+    // Auto-refresh every 5 minutes
+    loadNews();
+    setInterval(loadNews, 5 * 60 * 1000);
+  </script>
+</body>
+</html>
