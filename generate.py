@@ -5,6 +5,7 @@ and writes docs/index.html with all articles embedded as JSON.
 Run manually or via CI (GitHub/Gitea Actions).
 """
 
+import gzip
 import json
 import os
 import re
@@ -102,6 +103,17 @@ def fetch_feed(cfg):
         )
         with urllib.request.urlopen(req, timeout=20) as resp:
             raw = resp.read()
+            encoding = resp.headers.get("Content-Encoding", "")
+
+        # Decompress if needed
+        if encoding == "gzip":
+            raw = gzip.decompress(raw)
+        elif encoding == "deflate":
+            import zlib
+            raw = zlib.decompress(raw)
+
+        # Strip invalid XML characters (control chars except tab/LF/CR)
+        raw = re.sub(rb'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', b'', raw)
 
         root = ET.fromstring(raw)
         lang = cfg["lang"]
