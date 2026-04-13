@@ -2,8 +2,8 @@ name: Update Security News
 
 on:
   schedule:
-    # JST 6:00〜22:00 の毎時00分 (UTC 21:00〜13:00)
-    - cron: '0 21-23,0-13 * * *'
+    # 毎時00分に実行 (24時間対応)
+    - cron: '0 * * * *'
   push:
     branches:
       - claude/security-news-monitor-NxZxs
