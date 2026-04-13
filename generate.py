@@ -177,6 +177,8 @@ def fetch_all():
             articles.extend(result)
             source_status[name] = {"ok": err is None, "error": err, "count": len(result)}
     articles.sort(key=lambda x: x["published_ts"], reverse=True)
+    cutoff = datetime.now(timezone.utc).timestamp() - 3 * 24 * 3600
+    articles = [a for a in articles if a["published_ts"] >= cutoff]
     return articles, source_status
 
 

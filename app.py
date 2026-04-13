@@ -185,6 +185,8 @@ def refresh_cache():
                     "count": len(result),
                 }
         articles.sort(key=lambda x: x["published_ts"], reverse=True)
+        cutoff = datetime.now(timezone.utc).timestamp() - 3 * 24 * 3600
+        articles = [a for a in articles if a["published_ts"] >= cutoff]
         now_jst = datetime.now(JST)
         with _cache_lock:
             _cache["articles"] = articles
