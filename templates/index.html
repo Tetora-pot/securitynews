@@ -42,7 +42,7 @@
             <input type="radio" class="btn-check" name="filter" id="filter-all" value="all" checked />
             <label class="btn btn-outline-secondary" for="filter-all">すべて</label>
             <input type="radio" class="btn-check" name="filter" id="filter-exploit" value="exploit" />
-            <label class="btn btn-outline-danger" for="filter-exploit">&#9888; 悪用観測</label>
+            <label class="btn btn-outline-danger" for="filter-exploit">&#9888; 悪用情報</label>
             <input type="radio" class="btn-check" name="filter" id="filter-vuln" value="vuln" />
             <label class="btn btn-outline-warning" for="filter-vuln">&#128274; 脆弱性</label>
           </div>
@@ -214,7 +214,7 @@
         col.className = 'col-12 col-sm-6 col-xl-4';
 
         const exploitBadge = a.is_exploit
-          ? '<span class="badge bg-danger me-1">&#9888; 悪用観測</span>'
+          ? '<span class="badge bg-danger me-1">&#9888; 悪用情報</span>'
           : '';
         const vulnBadge = a.is_vuln
           ? '<span class="badge bg-warning text-dark me-1">&#128274; 脆弱性</span>'

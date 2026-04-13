@@ -147,9 +147,6 @@ def fetch_feed(cfg: dict) -> tuple[list, str | None]:
             is_exploit = _has_match(text, EXPLOIT_PATTERNS_EN, EXPLOIT_WORDS_JA, lang)
             is_vuln = _has_match(text, VULN_PATTERNS_EN, VULN_WORDS_JA, lang)
 
-            if not (is_exploit or is_vuln):
-                continue
-
             articles.append({
                 "source": cfg["name"],
                 "title": title,

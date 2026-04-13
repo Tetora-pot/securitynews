@@ -150,9 +150,6 @@ def fetch_feed(cfg):
             is_exploit = _has_match(text, EXPLOIT_PATTERNS_EN, EXPLOIT_WORDS_JA, lang)
             is_vuln    = _has_match(text, VULN_PATTERNS_EN,    VULN_WORDS_JA,    lang)
 
-            if not (is_exploit or is_vuln):
-                continue
-
             pub_jst = pub_dt.astimezone(JST) if pub_dt != datetime.min.replace(tzinfo=timezone.utc) else None
             articles.append({
                 "source":       cfg["name"],
@@ -365,7 +362,7 @@ def build_html(articles, source_status, generated_at):
             <input type="radio" class="btn-check" name="filter" id="filter-all" value="all" checked />
             <label class="btn btn-outline-secondary" for="filter-all">すべて</label>
             <input type="radio" class="btn-check" name="filter" id="filter-exploit" value="exploit" />
-            <label class="btn btn-outline-danger" for="filter-exploit">&#9888; 悪用観測</label>
+            <label class="btn btn-outline-danger" for="filter-exploit">&#9888; 悪用情報</label>
             <input type="radio" class="btn-check" name="filter" id="filter-vuln" value="vuln" />
             <label class="btn btn-outline-warning" for="filter-vuln">&#128274; 脆弱性</label>
           </div>
@@ -546,7 +543,7 @@ def build_html(articles, source_status, generated_at):
         const isChecked  = checkedSet.has(a.link);
         const col        = document.createElement('div');
         col.className    = 'col-12 col-sm-6 col-xl-4';
-        const exploitBadge = a.is_exploit ? '<span class="badge bg-danger me-1">&#9888; 悪用観測</span>' : '';
+        const exploitBadge = a.is_exploit ? '<span class="badge bg-danger me-1">&#9888; 悪用情報</span>' : '';
         const vulnBadge    = a.is_vuln    ? '<span class="badge bg-warning text-dark me-1">&#128274; 脆弱性</span>' : '';
         const transBadge   = (a.lang === 'en' && langMode === 'ja')
           ? '<span class="badge bg-info text-dark me-1" title="機械翻訳">翻訳</span>' : '';
