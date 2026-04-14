@@ -1,3 +1,4 @@
+import gzip
 import re
 import threading
 import time
@@ -98,72 +99,95 @@ _NS = {
 }
 
 
-def fetch_feed(cfg: dict) -> tuple[list, str | None]:
-    articles = []
+def fetch_feed(cfg: dict, max_retries: int = 3) -> tuple[list, str | None]:
     error = None
-    try:
-        req = urllib.request.Request(
-            cfg["url"],
-            headers={"User-Agent": "CSIRT-SecurityNews-Monitor/1.0 (RSS reader)"},
-        )
-        with urllib.request.urlopen(req, timeout=15) as resp:
-            raw = resp.read()
-
-        root = ET.fromstring(raw)
-        lang = cfg["lang"]
-
-        items = root.findall(".//item")
-        if not items:
-            items = root.findall(".//{http://www.w3.org/2005/Atom}entry")
-
-        for item in items[:60]:
-            def g(tag, ns=None):
-                el = item.find(ns + tag if ns else tag)
-                return (el.text or "").strip() if el is not None and el.text else ""
-
-            title = g("title") or item.findtext("{http://www.w3.org/2005/Atom}title", "")
-            link = g("link") or ""
-            if not link:
-                lel = item.find("{http://www.w3.org/2005/Atom}link")
-                link = lel.get("href", "") if lel is not None else ""
-
-            summary = (
-                g("description")
-                or item.findtext(_NS["content"] + "encoded", "")
-                or item.findtext("{http://www.w3.org/2005/Atom}summary", "")
-                or item.findtext("{http://www.w3.org/2005/Atom}content", "")
+    for attempt in range(1, max_retries + 1):
+        articles = []
+        try:
+            req = urllib.request.Request(
+                cfg["url"],
+                headers={"User-Agent": "CSIRT-SecurityNews-Monitor/1.0 (RSS reader)"},
             )
-            summary = _strip_tags(summary)
+            with urllib.request.urlopen(req, timeout=15) as resp:
+                raw = resp.read()
+                encoding = resp.headers.get("Content-Encoding", "")
 
-            pub_raw = (
-                g("pubDate")
-                or item.findtext(_NS["dc"] + "date", "")
-                or item.findtext("{http://www.w3.org/2005/Atom}published", "")
-                or item.findtext("{http://www.w3.org/2005/Atom}updated", "")
-            )
-            pub_dt = _parse_date(pub_raw)
+            # Decompress if needed
+            if encoding == "gzip":
+                raw = gzip.decompress(raw)
+            elif encoding == "deflate":
+                import zlib
+                raw = zlib.decompress(raw)
 
-            text = f"{title} {summary}"
-            is_exploit = _has_match(text, EXPLOIT_PATTERNS_EN, EXPLOIT_WORDS_JA, lang)
-            is_vuln = _has_match(text, VULN_PATTERNS_EN, VULN_WORDS_JA, lang)
+            # Strip invalid XML characters (control chars except tab/LF/CR)
+            raw = re.sub(rb'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', b'', raw)
 
-            if not (is_exploit or is_vuln):
-                continue
+            root = ET.fromstring(raw)
+            lang = cfg["lang"]
 
-            articles.append({
-                "source": cfg["name"],
-                "title": title,
-                "link": link,
-                "summary": summary[:300],
-                "published": pub_dt.strftime("%Y-%m-%d %H:%M UTC") if pub_dt != datetime.min.replace(tzinfo=timezone.utc) else "",
-                "published_ts": pub_dt.timestamp(),
-                "is_exploit": is_exploit,
-                "is_vuln": is_vuln,
-            })
-    except Exception as e:
-        error = str(e)
-        print(f"[ERROR] {cfg['name']}: {e}")
-    return articles, error
+            items = root.findall(".//item")
+            if not items:
+                items = root.findall(".//{http://www.w3.org/2005/Atom}entry")
+
+            for item in items[:60]:
+                def g(tag, ns=None):
+                    el = item.find(ns + tag if ns else tag)
+                    return (el.text or "").strip() if el is not None and el.text else ""
+
+                title = g("title") or item.findtext("{http://www.w3.org/2005/Atom}title", "")
+                link = g("link") or ""
+                if not link:
+                    lel = item.find("{http://www.w3.org/2005/Atom}link")
+                    link = lel.get("href", "") if lel is not None else ""
+
+                summary = (
+                    g("description")
+                    or item.findtext(_NS["content"] + "encoded", "")
+                    or item.findtext("{http://www.w3.org/2005/Atom}summary", "")
+                    or item.findtext("{http://www.w3.org/2005/Atom}content", "")
+                )
+                summary = _strip_tags(summary)
+
+                pub_raw = (
+                    g("pubDate")
+                    or item.findtext(_NS["dc"] + "date", "")
+                    or item.findtext("{http://www.w3.org/2005/Atom}published", "")
+                    or item.findtext("{http://www.w3.org/2005/Atom}updated", "")
+                )
+                pub_dt = _parse_date(pub_raw)
+
+                text = f"{title} {summary}"
+                is_exploit = _has_match(text, EXPLOIT_PATTERNS_EN, EXPLOIT_WORDS_JA, lang)
+                is_vuln = _has_match(text, VULN_PATTERNS_EN, VULN_WORDS_JA, lang)
+
+                if not (is_exploit or is_vuln):
+                    continue
+
+                articles.append({
+                    "source": cfg["name"],
+                    "title": title,
+                    "link": link,
+                    "summary": summary[:300],
+                    "published": pub_dt.strftime("%Y-%m-%d %H:%M UTC") if pub_dt != datetime.min.replace(tzinfo=timezone.utc) else "",
+                    "published_ts": pub_dt.timestamp(),
+                    "is_exploit": is_exploit,
+                    "is_vuln": is_vuln,
+                })
+
+            return articles, None
+
+        except ET.ParseError as e:
+            error = str(e)
+            print(f"[WARN] {cfg['name']} (attempt {attempt}/{max_retries}): XML parse error: {e}")
+            if attempt < max_retries:
+                print(f"[INFO] {cfg['name']}: retrying...")
+                time.sleep(1)
+        except Exception as e:
+            error = str(e)
+            print(f"[ERROR] {cfg['name']}: {e}")
+            break
+
+    return [], error
 
 
 def refresh_cache():
