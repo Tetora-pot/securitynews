@@ -20,6 +20,9 @@ from zoneinfo import ZoneInfo
 
 JST = ZoneInfo("Asia/Tokyo")
 DOCS_DIR = os.path.join(os.path.dirname(__file__), "docs")
+GITHUB_REPO = "Tetora-pot/securitynews"
+WORKFLOW_FILE = "update.yml"
+ACTIONS_URL = f"https://github.com/{GITHUB_REPO}/actions/workflows/{WORKFLOW_FILE}"
 
 FEEDS = [
     {"name": "CyberSecurity News", "url": "https://cybersecuritynews.com/feed/", "lang": "en"},
@@ -327,7 +330,7 @@ def translate_articles(articles):
 # HTML generation
 # ---------------------------------------------------------------------------
 
-def build_html(articles, source_status, generated_at):
+def build_html(articles, source_status, generated_at, actions_url=ACTIONS_URL):
     sources_json    = json.dumps(source_status, ensure_ascii=False)
     articles_json   = json.dumps(articles,      ensure_ascii=False)
     feed_names_json = json.dumps([f["name"] for f in FEEDS], ensure_ascii=False)
@@ -349,6 +352,11 @@ def build_html(articles, source_status, generated_at):
       <span class="navbar-brand fw-bold me-auto">&#9888; CSIRT News Monitor</span>
       <div class="d-flex align-items-center gap-2 flex-shrink-0">
         <span class="text-light d-none d-sm-inline" style="font-size:0.7rem">生成: {generated_at}</span>
+        <!-- 手動更新ボタン -->
+        <a href="{actions_url}" target="_blank" rel="noopener noreferrer"
+           class="btn btn-sm btn-outline-warning" title="GitHub Actions で今すぐ更新を実行">
+          &#9654; 今すぐ更新
+        </a>
         <!-- 言語トグル (コンパクト) -->
         <div class="btn-group btn-group-sm" role="group">
           <input type="radio" class="btn-check" name="lang-mode" id="lang-ja" value="ja" />
