@@ -354,16 +354,7 @@ def build_html(articles, source_status, generated_at,
     <div class="container-fluid px-3">
       <span class="navbar-brand fw-bold me-auto">&#9888; CSIRT News Monitor</span>
       <div class="d-flex align-items-center gap-2 flex-shrink-0">
-        <span class="text-light d-none d-sm-inline" style="font-size:0.7rem">生成: {generated_at}</span>
-        <!-- 言語トグル (コンパクト) -->
-        <div class="btn-group btn-group-sm" role="group">
-          <input type="radio" class="btn-check" name="lang-mode" id="lang-ja" value="ja" />
-          <label class="btn btn-outline-light" for="lang-ja">JA</label>
-          <input type="radio" class="btn-check" name="lang-mode" id="lang-en" value="en" />
-          <label class="btn btn-outline-light" for="lang-en">EN</label>
-        </div>
-        <!-- ダークモードトグル -->
-        <button class="btn btn-sm btn-outline-light" id="dark-toggle" title="ダーク/ライト切替">&#9790;</button>
+        <span class="text-light" style="font-size:0.7rem">生成: {generated_at}</span>
         <!-- サイドバー開閉 -->
         <button class="btn btn-sm btn-outline-light" data-bs-toggle="offcanvas" data-bs-target="#sidebar" title="メニュー">&#9776;</button>
       </div>
@@ -377,6 +368,26 @@ def build_html(articles, source_status, generated_at,
       <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
     </div>
     <div class="offcanvas-body d-flex flex-column gap-3">
+
+      <!-- 表示設定 -->
+      <div class="card">
+        <div class="card-header fw-bold small py-2">&#9881; 表示設定</div>
+        <div class="card-body py-3 d-flex flex-column gap-3">
+          <div>
+            <div class="small text-secondary mb-1">言語</div>
+            <div class="btn-group btn-group-sm w-100" role="group">
+              <input type="radio" class="btn-check" name="lang-mode" id="lang-ja" value="ja" />
+              <label class="btn btn-outline-secondary" for="lang-ja">JA（日本語）</label>
+              <input type="radio" class="btn-check" name="lang-mode" id="lang-en" value="en" />
+              <label class="btn btn-outline-secondary" for="lang-en">EN（英語）</label>
+            </div>
+          </div>
+          <div>
+            <div class="small text-secondary mb-1">テーマ</div>
+            <button class="btn btn-sm btn-outline-secondary w-100" id="dark-toggle">&#9790; ダーク / ライト 切替</button>
+          </div>
+        </div>
+      </div>
 
       <!-- 今すぐ更新 -->
       <div class="card border-warning">
