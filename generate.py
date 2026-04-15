@@ -353,11 +353,8 @@ def build_html(articles, source_status, generated_at,
   <nav class="navbar navbar-dark bg-dark sticky-top">
     <div class="container-fluid px-3">
       <span class="navbar-brand fw-bold me-auto">&#9888; CSIRT News Monitor</span>
-      <div class="d-flex align-items-center gap-2 flex-shrink-0">
-        <span class="text-light" style="font-size:0.7rem">生成: {generated_at}</span>
-        <!-- サイドバー開閉 -->
-        <button class="btn btn-sm btn-outline-light" data-bs-toggle="offcanvas" data-bs-target="#sidebar" title="メニュー">&#9776;</button>
-      </div>
+      <!-- サイドバー開閉 -->
+      <button class="btn btn-sm btn-outline-light" data-bs-toggle="offcanvas" data-bs-target="#sidebar" title="メニュー">&#9776;</button>
     </div>
   </nav>
 
