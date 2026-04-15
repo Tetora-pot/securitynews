@@ -23,6 +23,8 @@ DOCS_DIR = os.path.join(os.path.dirname(__file__), "docs")
 GITHUB_REPO = "Tetora-pot/securitynews"
 WORKFLOW_FILE = "update.yml"
 ACTIONS_URL = f"https://github.com/{GITHUB_REPO}/actions/workflows/{WORKFLOW_FILE}"
+ACTIONS_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/{WORKFLOW_FILE}/dispatches"
+ACTIONS_BRANCH = "claude/security-news-monitor-NxZxs"
 
 FEEDS = [
     {"name": "CyberSecurity News", "url": "https://cybersecuritynews.com/feed/", "lang": "en"},
@@ -330,7 +332,8 @@ def translate_articles(articles):
 # HTML generation
 # ---------------------------------------------------------------------------
 
-def build_html(articles, source_status, generated_at, actions_url=ACTIONS_URL):
+def build_html(articles, source_status, generated_at,
+               actions_api_url=ACTIONS_API_URL, actions_branch=ACTIONS_BRANCH):
     sources_json    = json.dumps(source_status, ensure_ascii=False)
     articles_json   = json.dumps(articles,      ensure_ascii=False)
     feed_names_json = json.dumps([f["name"] for f in FEEDS], ensure_ascii=False)
@@ -352,11 +355,6 @@ def build_html(articles, source_status, generated_at, actions_url=ACTIONS_URL):
       <span class="navbar-brand fw-bold me-auto">&#9888; CSIRT News Monitor</span>
       <div class="d-flex align-items-center gap-2 flex-shrink-0">
         <span class="text-light d-none d-sm-inline" style="font-size:0.7rem">生成: {generated_at}</span>
-        <!-- 手動更新ボタン -->
-        <a href="{actions_url}" target="_blank" rel="noopener noreferrer"
-           class="btn btn-sm btn-outline-warning" title="GitHub Actions で今すぐ更新を実行">
-          &#9654; 今すぐ更新
-        </a>
         <!-- 言語トグル (コンパクト) -->
         <div class="btn-group btn-group-sm" role="group">
           <input type="radio" class="btn-check" name="lang-mode" id="lang-ja" value="ja" />
@@ -366,9 +364,36 @@ def build_html(articles, source_status, generated_at, actions_url=ACTIONS_URL):
         </div>
         <!-- ダークモードトグル -->
         <button class="btn btn-sm btn-outline-light" id="dark-toggle" title="ダーク/ライト切替">&#9790;</button>
+        <!-- サイドバー開閉 -->
+        <button class="btn btn-sm btn-outline-light" data-bs-toggle="offcanvas" data-bs-target="#sidebar" title="メニュー">&#9776;</button>
       </div>
     </div>
   </nav>
+
+  <!-- ===== Sidebar (Offcanvas) ===== -->
+  <div class="offcanvas offcanvas-end" tabindex="-1" id="sidebar" aria-labelledby="sidebarLabel">
+    <div class="offcanvas-header border-bottom">
+      <h6 class="offcanvas-title fw-bold" id="sidebarLabel">&#9881; 管理メニュー</h6>
+      <button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="Close"></button>
+    </div>
+    <div class="offcanvas-body d-flex flex-column gap-3">
+
+      <!-- 今すぐ更新 -->
+      <div class="card border-warning">
+        <div class="card-header text-warning fw-bold small py-2">&#9654; 今すぐ更新</div>
+        <div class="card-body py-3">
+          <p class="small text-secondary mb-2">GitHub PAT（<code>workflow</code> スコープ）でワークフローを直接実行します。トークンはブラウザのみに保存されます。</p>
+          <div class="mb-2">
+            <label for="gh-token" class="form-label small mb-1">GitHub Personal Access Token</label>
+            <input type="password" class="form-control form-control-sm" id="gh-token" placeholder="ghp_..." autocomplete="off" />
+          </div>
+          <button class="btn btn-warning btn-sm w-100" id="run-workflow-btn">&#9654; 今すぐ更新を実行</button>
+          <div id="workflow-status" class="mt-2 small text-center"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
 
   <!-- ===== Schedule bar ===== -->
   <div class="schedule-bar text-center py-1 small">
@@ -613,6 +638,56 @@ def build_html(articles, source_status, generated_at, actions_url=ACTIONS_URL):
     document.getElementById('search-input').addEventListener('input', renderArticles);
 
     renderArticles();
+  </script>
+
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+  <script>
+    // ===== Sidebar: GitHub Token & Workflow Dispatch =====
+    (function() {{
+      const KEY_TOKEN = 'csirt:gh-token';
+      const tokenInput = document.getElementById('gh-token');
+      const runBtn     = document.getElementById('run-workflow-btn');
+      const statusEl   = document.getElementById('workflow-status');
+
+      tokenInput.value = localStorage.getItem(KEY_TOKEN) || '';
+      tokenInput.addEventListener('change', function() {{
+        localStorage.setItem(KEY_TOKEN, this.value.trim());
+      }});
+
+      runBtn.addEventListener('click', async function() {{
+        const token = tokenInput.value.trim();
+        localStorage.setItem(KEY_TOKEN, token);
+        if (!token) {{
+          statusEl.innerHTML = '<span class="text-danger">&#9888; GitHub Token を入力してください</span>';
+          return;
+        }}
+        runBtn.disabled = true;
+        runBtn.textContent = '実行中...';
+        statusEl.innerHTML = '';
+        try {{
+          const resp = await fetch('{actions_api_url}', {{
+            method: 'POST',
+            headers: {{
+              'Authorization': `Bearer ${{token}}`,
+              'Accept': 'application/vnd.github+json',
+              'X-GitHub-Api-Version': '2022-11-28',
+              'Content-Type': 'application/json',
+            }},
+            body: JSON.stringify({{ ref: '{actions_branch}' }}),
+          }});
+          if (resp.status === 204) {{
+            statusEl.innerHTML = '<span class="text-success">&#10003; ワークフロー開始。数分後にリロードしてください。</span>';
+          }} else {{
+            const err = await resp.json().catch(() => ({{}}));
+            statusEl.innerHTML = `<span class="text-danger">エラー ${{resp.status}}: ${{escHtml(err.message || '不明なエラー')}}</span>`;
+          }}
+        }} catch (e) {{
+          statusEl.innerHTML = `<span class="text-danger">エラー: ${{escHtml(e.message)}}</span>`;
+        }}
+        runBtn.disabled = false;
+        runBtn.innerHTML = '&#9654; 今すぐ更新を実行';
+      }});
+    }})();
   </script>
 </body>
 </html>
