@@ -157,9 +157,6 @@ def fetch_feed(cfg, max_retries=3):
                 is_exploit = _has_match(text, EXPLOIT_PATTERNS_EN, EXPLOIT_WORDS_JA, lang)
                 is_vuln    = _has_match(text, VULN_PATTERNS_EN,    VULN_WORDS_JA,    lang)
 
-                if not (is_exploit or is_vuln):
-                    continue
-
                 pub_jst = pub_dt.astimezone(JST) if pub_dt != datetime.min.replace(tzinfo=timezone.utc) else None
                 articles.append({
                     "source":       cfg["name"],
@@ -419,7 +416,7 @@ def build_html(articles, source_status, generated_at,
             <input type="radio" class="btn-check" name="filter" id="filter-all" value="all" checked />
             <label class="btn btn-outline-secondary" for="filter-all">すべて</label>
             <input type="radio" class="btn-check" name="filter" id="filter-exploit" value="exploit" />
-            <label class="btn btn-outline-danger" for="filter-exploit">&#9888; 悪用観測</label>
+            <label class="btn btn-outline-danger" for="filter-exploit">&#9888; 悪用情報</label>
             <input type="radio" class="btn-check" name="filter" id="filter-vuln" value="vuln" />
             <label class="btn btn-outline-warning" for="filter-vuln">&#128274; 脆弱性</label>
           </div>
@@ -600,7 +597,7 @@ def build_html(articles, source_status, generated_at,
         const isChecked  = checkedSet.has(a.link);
         const col        = document.createElement('div');
         col.className    = 'col-12 col-sm-6 col-xl-4';
-        const exploitBadge = a.is_exploit ? '<span class="badge bg-danger me-1">&#9888; 悪用観測</span>' : '';
+        const exploitBadge = a.is_exploit ? '<span class="badge bg-danger me-1">&#9888; 悪用情報</span>' : '';
         const vulnBadge    = a.is_vuln    ? '<span class="badge bg-warning text-dark me-1">&#128274; 脆弱性</span>' : '';
         const transBadge   = (a.lang === 'en' && langMode === 'ja')
           ? '<span class="badge bg-info text-dark me-1" title="機械翻訳">翻訳</span>' : '';
@@ -703,16 +700,70 @@ def build_html(articles, source_status, generated_at,
 
 
 # ---------------------------------------------------------------------------
+# Article cache (accumulates articles across CI runs)
+# ---------------------------------------------------------------------------
+
+ARTICLES_CACHE_PATH = os.path.join(DOCS_DIR, "articles_cache.json")
+RETAIN_HOURS = 72  # 3 days
+
+
+def load_article_cache():
+    """Load previously accumulated articles from cache file."""
+    if os.path.exists(ARTICLES_CACHE_PATH):
+        try:
+            with open(ARTICLES_CACHE_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[WARN] Failed to load article cache: {e}", file=sys.stderr)
+    return []
+
+
+def save_article_cache(articles):
+    """Persist accumulated articles to cache file."""
+    os.makedirs(DOCS_DIR, exist_ok=True)
+    with open(ARTICLES_CACHE_PATH, "w", encoding="utf-8") as f:
+        json.dump(articles, f, ensure_ascii=False)
+
+
+def merge_articles(cached, fresh, cutoff_ts):
+    """Merge fresh articles into cached set, deduplicate by link, filter by cutoff."""
+    by_link = {a["link"]: a for a in cached}
+    for a in fresh:
+        by_link[a["link"]] = a  # fresh overwrites cached (translation updates etc.)
+    merged = [a for a in by_link.values() if a["published_ts"] >= cutoff_ts]
+    merged.sort(key=lambda x: x["published_ts"], reverse=True)
+    return merged
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 def main():
     print("Fetching RSS feeds...")
-    articles, source_status = fetch_all()
+    fresh_articles, source_status = fetch_all()
     total = sum(s["count"] for s in source_status.values())
-    print(f"Fetched {total} matching articles from {len(FEEDS)} sources.")
+    print(f"Fetched {total} articles from {len(FEEDS)} sources.")
 
-    articles = translate_articles(articles)
+    # Load previously accumulated articles
+    cached = load_article_cache()
+    cached_links = {a["link"] for a in cached}
+
+    # Translate only genuinely new articles (not yet in cache)
+    new_articles = [a for a in fresh_articles if a["link"] not in cached_links]
+    if new_articles:
+        print(f"Translating {len(new_articles)} new articles...")
+        new_articles = translate_articles(new_articles)
+    else:
+        print("No new articles to translate.")
+
+    # Merge new articles into cache; keep only articles within 72 hours
+    cutoff = datetime.now(timezone.utc).timestamp() - RETAIN_HOURS * 3600
+    articles = merge_articles(cached, new_articles, cutoff)
+    print(f"Total after merge: {len(articles)} articles (within {RETAIN_HOURS}h).")
+
+    # Persist updated cache
+    save_article_cache(articles)
 
     os.makedirs(DOCS_DIR, exist_ok=True)
 
