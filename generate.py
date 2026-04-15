@@ -177,8 +177,6 @@ def fetch_all():
             articles.extend(result)
             source_status[name] = {"ok": err is None, "error": err, "count": len(result)}
     articles.sort(key=lambda x: x["published_ts"], reverse=True)
-    cutoff = datetime.now(timezone.utc).timestamp() - 3 * 24 * 3600
-    articles = [a for a in articles if a["published_ts"] >= cutoff]
     return articles, source_status
 
 
@@ -598,16 +596,70 @@ def build_html(articles, source_status, generated_at):
 
 
 # ---------------------------------------------------------------------------
+# Article cache (accumulates articles across CI runs)
+# ---------------------------------------------------------------------------
+
+ARTICLES_CACHE_PATH = os.path.join(DOCS_DIR, "articles_cache.json")
+RETAIN_HOURS = 72  # 3 days
+
+
+def load_article_cache():
+    """Load previously accumulated articles from cache file."""
+    if os.path.exists(ARTICLES_CACHE_PATH):
+        try:
+            with open(ARTICLES_CACHE_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception as e:
+            print(f"[WARN] Failed to load article cache: {e}", file=sys.stderr)
+    return []
+
+
+def save_article_cache(articles):
+    """Persist accumulated articles to cache file."""
+    os.makedirs(DOCS_DIR, exist_ok=True)
+    with open(ARTICLES_CACHE_PATH, "w", encoding="utf-8") as f:
+        json.dump(articles, f, ensure_ascii=False)
+
+
+def merge_articles(cached, fresh, cutoff_ts):
+    """Merge fresh articles into cached set, deduplicate by link, filter by cutoff."""
+    by_link = {a["link"]: a for a in cached}
+    for a in fresh:
+        by_link[a["link"]] = a  # fresh overwrites cached (translation updates etc.)
+    merged = [a for a in by_link.values() if a["published_ts"] >= cutoff_ts]
+    merged.sort(key=lambda x: x["published_ts"], reverse=True)
+    return merged
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
 def main():
     print("Fetching RSS feeds...")
-    articles, source_status = fetch_all()
+    fresh_articles, source_status = fetch_all()
     total = sum(s["count"] for s in source_status.values())
-    print(f"Fetched {total} matching articles from {len(FEEDS)} sources.")
+    print(f"Fetched {total} articles from {len(FEEDS)} sources.")
 
-    articles = translate_articles(articles)
+    # Load previously accumulated articles
+    cached = load_article_cache()
+    cached_links = {a["link"] for a in cached}
+
+    # Translate only genuinely new articles (not yet in cache)
+    new_articles = [a for a in fresh_articles if a["link"] not in cached_links]
+    if new_articles:
+        print(f"Translating {len(new_articles)} new articles...")
+        new_articles = translate_articles(new_articles)
+    else:
+        print("No new articles to translate.")
+
+    # Merge new articles into cache; keep only articles within 72 hours
+    cutoff = datetime.now(timezone.utc).timestamp() - RETAIN_HOURS * 3600
+    articles = merge_articles(cached, new_articles, cutoff)
+    print(f"Total after merge: {len(articles)} articles (within {RETAIN_HOURS}h).")
+
+    # Persist updated cache
+    save_article_cache(articles)
 
     os.makedirs(DOCS_DIR, exist_ok=True)
 

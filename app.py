@@ -184,12 +184,17 @@ def refresh_cache():
                     "error": err,
                     "count": len(result),
                 }
-        articles.sort(key=lambda x: x["published_ts"], reverse=True)
+        # Merge with existing in-memory cache to accumulate 72h of articles
         cutoff = datetime.now(timezone.utc).timestamp() - 3 * 24 * 3600
-        articles = [a for a in articles if a["published_ts"] >= cutoff]
+        with _cache_lock:
+            existing = {a["link"]: a for a in _cache["articles"]}
+        for a in articles:
+            existing[a["link"]] = a  # fresh overwrites cached
+        merged = [a for a in existing.values() if a["published_ts"] >= cutoff]
+        merged.sort(key=lambda x: x["published_ts"], reverse=True)
         now_jst = datetime.now(JST)
         with _cache_lock:
-            _cache["articles"] = articles
+            _cache["articles"] = merged
             _cache["sources"] = source_status
             _cache["fetched_at"] = now_jst.strftime("%Y-%m-%d %H:%M JST")
             _cache["is_fetching"] = False
