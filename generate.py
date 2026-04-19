@@ -289,8 +289,8 @@ def translate_articles(articles):
     try:
         model = _detect_model(client)
     except Exception as e:
-        print(f"[ERROR] Failed to connect to Anthropic API: {e}", file=sys.stderr)
-        sys.exit(1)
+        print(f"[WARN] Failed to connect to Anthropic API: {e} — skipping translation.", file=sys.stderr)
+        return articles
 
     en_indices = [i for i, a in enumerate(articles) if a.get("lang") == "en"]
     if not en_indices:
