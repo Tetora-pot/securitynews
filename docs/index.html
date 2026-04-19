@@ -65,7 +65,7 @@
 
   <!-- ===== Schedule bar ===== -->
   <div class="schedule-bar text-center py-1 small">
-    最終更新: <strong>2026-04-19 19:11 JST</strong>
+    最終更新: <strong>2026-04-19 19:20 JST</strong>
   </div>
 
   <!-- ===== Main ===== -->
@@ -341,7 +341,7 @@
               'X-GitHub-Api-Version': '2022-11-28',
               'Content-Type': 'application/json',
             },
-            body: JSON.stringify({ ref: 'claude/security-news-monitor-NxZxs' }),
+            body: JSON.stringify({ ref: 'main' }),
           });
           if (resp.status === 204) {
             statusEl.innerHTML = '<span class="text-success">&#10003; ワークフロー開始。数分後にリロードしてください。</span>';
