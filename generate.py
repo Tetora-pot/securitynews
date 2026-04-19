@@ -24,7 +24,7 @@ GITHUB_REPO = "Tetora-pot/securitynews"
 WORKFLOW_FILE = "update.yml"
 ACTIONS_URL = f"https://github.com/{GITHUB_REPO}/actions/workflows/{WORKFLOW_FILE}"
 ACTIONS_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/{WORKFLOW_FILE}/dispatches"
-ACTIONS_BRANCH = "claude/security-news-monitor-NxZxs"
+ACTIONS_BRANCH = "main"
 
 FEEDS = [
     {"name": "CyberSecurity News", "url": "https://cybersecuritynews.com/feed/", "lang": "en"},
