@@ -397,6 +397,16 @@ def build_html(articles, source_status, generated_at,
         </div>
       </div>
 
+      <!-- 確認済み同期 -->
+      <div class="card border-info">
+        <div class="card-header text-info fw-bold small py-2">&#8645; 確認済み同期</div>
+        <div class="card-body py-3">
+          <p class="small text-secondary mb-2">上の GitHub PAT（<code>gist</code> スコープ追加）で確認チェックを GitHub Gist に保存し、複数端末で共有します。</p>
+          <button class="btn btn-outline-info btn-sm w-100" id="sync-now-btn">&#8645; 今すぐ同期</button>
+          <div id="sync-status" class="mt-2 small text-center"></div>
+        </div>
+      </div>
+
     </div>
   </div>
 
@@ -471,9 +481,11 @@ def build_html(articles, source_status, generated_at,
     const FEED_NAMES = {feed_names_json};
 
     // ===== Persistence keys =====
-    const KEY_THEME   = 'csirt:theme';
-    const KEY_LANG    = 'csirt:lang';
-    const KEY_CHECKED = 'csirt:checked'; // JSON array of checked URLs
+    const KEY_THEME    = 'csirt:theme';
+    const KEY_LANG     = 'csirt:lang';
+    const KEY_CHECKED  = 'csirt:checked'; // JSON array of checked URLs
+    const KEY_GH_TOKEN = 'csirt:gh-token';
+    const KEY_GIST_ID  = 'csirt:sync-gist-id';
 
     // ===== Dark mode =====
     let checkedSet = new Set(JSON.parse(localStorage.getItem(KEY_CHECKED) || '[]'));
@@ -551,6 +563,7 @@ def build_html(articles, source_status, generated_at,
     function toggleChecked(url) {{
       if (checkedSet.has(url)) checkedSet.delete(url); else checkedSet.add(url);
       saveChecked();
+      scheduleSync();
       // Update card style without full re-render
       document.querySelectorAll(`.article-check[data-url="${{CSS.escape(url)}}"]`).forEach(cb => {{
         cb.checked = checkedSet.has(url);
@@ -560,6 +573,87 @@ def build_html(articles, source_status, generated_at,
       const rf = document.querySelector('input[name="read-filter"]:checked')?.value;
       if (rf !== 'all') renderArticles();
       else document.getElementById('article-count').textContent = `${{document.querySelectorAll('#articles-container .col-12').length}} 件`;
+    }}
+
+    // ===== Gist sync =====
+    const GIST_FILE = 'csirt-checked.json';
+    let syncTimer   = null;
+
+    function setSyncStatus(msg, cls) {{
+      const el = document.getElementById('sync-status');
+      if (!el) return;
+      el.innerHTML = msg;
+      el.className = 'mt-2 small text-center ' + (cls || 'text-secondary');
+    }}
+
+    async function doSync(showStatus) {{
+      const token = localStorage.getItem(KEY_GH_TOKEN) || '';
+      if (!token) {{
+        if (showStatus) setSyncStatus('&#9888; GitHub Token を入力してください', 'text-danger');
+        return;
+      }}
+      if (showStatus) setSyncStatus('同期中...');
+      try {{
+        let gistId = localStorage.getItem(KEY_GIST_ID);
+        let remoteUrls = [];
+
+        if (gistId) {{
+          try {{
+            const r = await fetch(`https://api.github.com/gists/${{gistId}}`, {{
+              headers: {{ 'Authorization': `Bearer ${{token}}`, 'Accept': 'application/vnd.github+json' }}
+            }});
+            if (r.ok) {{
+              const d = await r.json();
+              const raw = d.files && d.files[GIST_FILE] && d.files[GIST_FILE].content;
+              remoteUrls = raw ? (JSON.parse(raw).checked || []) : [];
+            }} else {{
+              gistId = null;
+              localStorage.removeItem(KEY_GIST_ID);
+            }}
+          }} catch (_) {{
+            gistId = null;
+            localStorage.removeItem(KEY_GIST_ID);
+          }}
+        }}
+
+        remoteUrls.forEach(u => checkedSet.add(u));
+        saveChecked();
+        renderArticles();
+
+        const content = JSON.stringify({{ checked: [...checkedSet], updated_at: new Date().toISOString() }}, null, 2);
+        const filesPatch = {{}};
+        filesPatch[GIST_FILE] = {{ content }};
+        let newId;
+        if (gistId) {{
+          const r = await fetch(`https://api.github.com/gists/${{gistId}}`, {{
+            method: 'PATCH',
+            headers: {{ 'Authorization': `Bearer ${{token}}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ files: filesPatch }})
+          }});
+          if (!r.ok) throw new Error(String(r.status));
+          newId = gistId;
+        }} else {{
+          const r = await fetch('https://api.github.com/gists', {{
+            method: 'POST',
+            headers: {{ 'Authorization': `Bearer ${{token}}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' }},
+            body: JSON.stringify({{ description: 'CSIRT News Monitor - checked articles', public: false, files: filesPatch }})
+          }});
+          if (!r.ok) throw new Error(String(r.status));
+          newId = (await r.json()).id;
+        }}
+        if (newId !== gistId) localStorage.setItem(KEY_GIST_ID, newId);
+        if (showStatus) {{
+          const t = new Date().toLocaleTimeString('ja-JP');
+          setSyncStatus(`&#10003; 同期完了 (${{t}})`, 'text-success');
+        }}
+      }} catch (e) {{
+        if (showStatus) setSyncStatus(`&#9888; エラー: ${{escHtml(e.message)}}`, 'text-danger');
+      }}
+    }}
+
+    function scheduleSync() {{
+      clearTimeout(syncTimer);
+      syncTimer = setTimeout(() => doSync(false), 2000);
     }}
 
     // ===== Render =====
@@ -643,6 +737,9 @@ def build_html(articles, source_status, generated_at,
     document.getElementById('search-input').addEventListener('input', renderArticles);
 
     renderArticles();
+
+    document.getElementById('sync-now-btn')?.addEventListener('click', () => doSync(true));
+    if (localStorage.getItem(KEY_GH_TOKEN)) doSync(false);
   </script>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
