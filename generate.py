@@ -26,7 +26,6 @@ ACTIONS_URL = f"https://github.com/{GITHUB_REPO}/actions/workflows/{WORKFLOW_FIL
 ACTIONS_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/{WORKFLOW_FILE}/dispatches"
 ACTIONS_BRANCH = "main"
 CHECKED_FILE = "docs/checked.json"
-CHECKED_RAW_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{CHECKED_FILE}"
 CHECKED_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{CHECKED_FILE}"
 
 FEEDS = [
@@ -334,7 +333,7 @@ def translate_articles(articles):
 
 def build_html(articles, source_status, generated_at,
                actions_api_url=ACTIONS_API_URL, actions_branch=ACTIONS_BRANCH,
-               checked_raw_url=CHECKED_RAW_URL, checked_api_url=CHECKED_API_URL):
+               checked_api_url=CHECKED_API_URL):
     sources_json    = json.dumps(source_status, ensure_ascii=False)
     articles_json   = json.dumps(articles,      ensure_ascii=False)
     feed_names_json = json.dumps([f["name"] for f in FEEDS], ensure_ascii=False)
@@ -579,7 +578,6 @@ def build_html(articles, source_status, generated_at,
     }}
 
     // ===== GitHub sync =====
-    const CHECKED_RAW_URL = '{checked_raw_url}';
     const CHECKED_API_URL = '{checked_api_url}';
     let syncTimer = null;
 
@@ -592,10 +590,16 @@ def build_html(articles, source_status, generated_at,
 
     async function loadRemoteChecked() {{
       try {{
-        const r = await fetch(CHECKED_RAW_URL + '?v=' + Date.now());
-        if (!r.ok) return [];
+        const r = await fetch(CHECKED_API_URL, {{
+          headers: {{ 'Accept': 'application/vnd.github+json' }}
+        }});
+        if (r.status === 404) return [];
+        if (!r.ok) throw new Error(String(r.status));
         const d = await r.json();
-        return Array.isArray(d.checked) ? d.checked : [];
+        if (!d.content) return [];
+        const json = atob(d.content.replace(/\s/g, ''));
+        const data = JSON.parse(json);
+        return Array.isArray(data.checked) ? data.checked : [];
       }} catch (_) {{
         return [];
       }}
@@ -612,7 +616,10 @@ def build_html(articles, source_status, generated_at,
         throw new Error(String(gr.status));
       }}
       const json = JSON.stringify({{ checked: [...checkedSet], updated_at: new Date().toISOString() }}, null, 2);
-      const content = btoa(json);
+      const bytes = new TextEncoder().encode(json);
+      let binary = '';
+      bytes.forEach(b => binary += String.fromCharCode(b));
+      const content = btoa(binary);
       const body = {{ message: 'sync: update checked status [skip ci]', content }};
       if (sha) body.sha = sha;
       const pr = await fetch(CHECKED_API_URL, {{
