@@ -75,7 +75,7 @@
 
   <!-- ===== Schedule bar ===== -->
   <div class="schedule-bar text-center py-1 small">
-    最終更新: <strong>2026-04-23 10:48 JST</strong>
+    最終更新: <strong>2026-04-23 10:58 JST</strong>
   </div>
 
   <!-- ===== Main ===== -->
@@ -238,7 +238,6 @@
     }
 
     // ===== GitHub sync =====
-    const CHECKED_RAW_URL = 'https://raw.githubusercontent.com/Tetora-pot/securitynews/main/docs/checked.json';
     const CHECKED_API_URL = 'https://api.github.com/repos/Tetora-pot/securitynews/contents/docs/checked.json';
     let syncTimer = null;
 
@@ -251,10 +250,16 @@
 
     async function loadRemoteChecked() {
       try {
-        const r = await fetch(CHECKED_RAW_URL + '?v=' + Date.now());
-        if (!r.ok) return [];
+        const r = await fetch(CHECKED_API_URL, {
+          headers: { 'Accept': 'application/vnd.github+json' }
+        });
+        if (r.status === 404) return [];
+        if (!r.ok) throw new Error(String(r.status));
         const d = await r.json();
-        return Array.isArray(d.checked) ? d.checked : [];
+        if (!d.content) return [];
+        const json = atob(d.content.replace(/\s/g, ''));
+        const data = JSON.parse(json);
+        return Array.isArray(data.checked) ? data.checked : [];
       } catch (_) {
         return [];
       }
@@ -271,7 +276,10 @@
         throw new Error(String(gr.status));
       }
       const json = JSON.stringify({ checked: [...checkedSet], updated_at: new Date().toISOString() }, null, 2);
-      const content = btoa(json);
+      const bytes = new TextEncoder().encode(json);
+      let binary = '';
+      bytes.forEach(b => binary += String.fromCharCode(b));
+      const content = btoa(binary);
       const body = { message: 'sync: update checked status [skip ci]', content };
       if (sha) body.sha = sha;
       const pr = await fetch(CHECKED_API_URL, {
