@@ -25,6 +25,9 @@ WORKFLOW_FILE = "update.yml"
 ACTIONS_URL = f"https://github.com/{GITHUB_REPO}/actions/workflows/{WORKFLOW_FILE}"
 ACTIONS_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/actions/workflows/{WORKFLOW_FILE}/dispatches"
 ACTIONS_BRANCH = "main"
+CHECKED_FILE = "docs/checked.json"
+CHECKED_RAW_URL = f"https://raw.githubusercontent.com/{GITHUB_REPO}/main/{CHECKED_FILE}"
+CHECKED_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{CHECKED_FILE}"
 
 FEEDS = [
     {"name": "CyberSecurity News", "url": "https://cybersecuritynews.com/feed/", "lang": "en"},
@@ -330,7 +333,8 @@ def translate_articles(articles):
 # ---------------------------------------------------------------------------
 
 def build_html(articles, source_status, generated_at,
-               actions_api_url=ACTIONS_API_URL, actions_branch=ACTIONS_BRANCH):
+               actions_api_url=ACTIONS_API_URL, actions_branch=ACTIONS_BRANCH,
+               checked_raw_url=CHECKED_RAW_URL, checked_api_url=CHECKED_API_URL):
     sources_json    = json.dumps(source_status, ensure_ascii=False)
     articles_json   = json.dumps(articles,      ensure_ascii=False)
     feed_names_json = json.dumps([f["name"] for f in FEEDS], ensure_ascii=False)
@@ -401,7 +405,7 @@ def build_html(articles, source_status, generated_at,
       <div class="card border-info">
         <div class="card-header text-info fw-bold small py-2">&#8645; 確認済み同期</div>
         <div class="card-body py-3">
-          <p class="small text-secondary mb-2">上の GitHub PAT（<code>gist</code> スコープ追加）で確認チェックを GitHub Gist に保存し、複数端末で共有します。</p>
+          <p class="small text-secondary mb-2">確認チェックをリポジトリ（<code>checked.json</code>）に保存し複数端末で共有します。<br>読み込みは設定不要。書き込みには上の PAT に <code>public_repo</code> スコープが必要です。</p>
           <button class="btn btn-outline-info btn-sm w-100" id="sync-now-btn">&#8645; 今すぐ同期</button>
           <div id="sync-status" class="mt-2 small text-center"></div>
         </div>
@@ -485,7 +489,6 @@ def build_html(articles, source_status, generated_at,
     const KEY_LANG     = 'csirt:lang';
     const KEY_CHECKED  = 'csirt:checked'; // JSON array of checked URLs
     const KEY_GH_TOKEN = 'csirt:gh-token';
-    const KEY_GIST_ID  = 'csirt:sync-gist-id';
 
     // ===== Dark mode =====
     let checkedSet = new Set(JSON.parse(localStorage.getItem(KEY_CHECKED) || '[]'));
@@ -575,9 +578,10 @@ def build_html(articles, source_status, generated_at,
       else document.getElementById('article-count').textContent = `${{document.querySelectorAll('#articles-container .col-12').length}} 件`;
     }}
 
-    // ===== Gist sync =====
-    const GIST_FILE = 'csirt-checked.json';
-    let syncTimer   = null;
+    // ===== GitHub sync =====
+    const CHECKED_RAW_URL = '{checked_raw_url}';
+    const CHECKED_API_URL = '{checked_api_url}';
+    let syncTimer = null;
 
     function setSyncStatus(msg, cls) {{
       const el = document.getElementById('sync-status');
@@ -586,65 +590,58 @@ def build_html(articles, source_status, generated_at,
       el.className = 'mt-2 small text-center ' + (cls || 'text-secondary');
     }}
 
-    async function doSync(showStatus) {{
-      const token = localStorage.getItem(KEY_GH_TOKEN) || '';
-      if (!token) {{
-        if (showStatus) setSyncStatus('&#9888; GitHub Token を入力してください', 'text-danger');
-        return;
+    async function loadRemoteChecked() {{
+      try {{
+        const r = await fetch(CHECKED_RAW_URL + '?v=' + Date.now());
+        if (!r.ok) return [];
+        const d = await r.json();
+        return Array.isArray(d.checked) ? d.checked : [];
+      }} catch (_) {{
+        return [];
       }}
+    }}
+
+    async function saveRemoteChecked(token) {{
+      const gr = await fetch(CHECKED_API_URL, {{
+        headers: {{ 'Authorization': `Bearer ${{token}}`, 'Accept': 'application/vnd.github+json' }}
+      }});
+      let sha;
+      if (gr.ok) {{
+        sha = (await gr.json()).sha;
+      }} else if (gr.status !== 404) {{
+        throw new Error(String(gr.status));
+      }}
+      const json = JSON.stringify({{ checked: [...checkedSet], updated_at: new Date().toISOString() }}, null, 2);
+      const content = btoa(json);
+      const body = {{ message: 'sync: update checked status [skip ci]', content }};
+      if (sha) body.sha = sha;
+      const pr = await fetch(CHECKED_API_URL, {{
+        method: 'PUT',
+        headers: {{ 'Authorization': `Bearer ${{token}}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' }},
+        body: JSON.stringify(body)
+      }});
+      if (!pr.ok) {{
+        const e = await pr.json().catch(() => ({{}}));
+        throw new Error(`${{pr.status}}: ${{e.message || ''}}`);
+      }}
+    }}
+
+    async function doSync(showStatus) {{
       if (showStatus) setSyncStatus('同期中...');
       try {{
-        let gistId = localStorage.getItem(KEY_GIST_ID);
-        let remoteUrls = [];
-
-        if (gistId) {{
-          try {{
-            const r = await fetch(`https://api.github.com/gists/${{gistId}}`, {{
-              headers: {{ 'Authorization': `Bearer ${{token}}`, 'Accept': 'application/vnd.github+json' }}
-            }});
-            if (r.ok) {{
-              const d = await r.json();
-              const raw = d.files && d.files[GIST_FILE] && d.files[GIST_FILE].content;
-              remoteUrls = raw ? (JSON.parse(raw).checked || []) : [];
-            }} else {{
-              gistId = null;
-              localStorage.removeItem(KEY_GIST_ID);
-            }}
-          }} catch (_) {{
-            gistId = null;
-            localStorage.removeItem(KEY_GIST_ID);
-          }}
-        }}
-
+        const remoteUrls = await loadRemoteChecked();
         remoteUrls.forEach(u => checkedSet.add(u));
         saveChecked();
         renderArticles();
-
-        const content = JSON.stringify({{ checked: [...checkedSet], updated_at: new Date().toISOString() }}, null, 2);
-        const filesPatch = {{}};
-        filesPatch[GIST_FILE] = {{ content }};
-        let newId;
-        if (gistId) {{
-          const r = await fetch(`https://api.github.com/gists/${{gistId}}`, {{
-            method: 'PATCH',
-            headers: {{ 'Authorization': `Bearer ${{token}}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' }},
-            body: JSON.stringify({{ files: filesPatch }})
-          }});
-          if (!r.ok) throw new Error(String(r.status));
-          newId = gistId;
-        }} else {{
-          const r = await fetch('https://api.github.com/gists', {{
-            method: 'POST',
-            headers: {{ 'Authorization': `Bearer ${{token}}`, 'Accept': 'application/vnd.github+json', 'Content-Type': 'application/json' }},
-            body: JSON.stringify({{ description: 'CSIRT News Monitor - checked articles', public: false, files: filesPatch }})
-          }});
-          if (!r.ok) throw new Error(String(r.status));
-          newId = (await r.json()).id;
-        }}
-        if (newId !== gistId) localStorage.setItem(KEY_GIST_ID, newId);
-        if (showStatus) {{
-          const t = new Date().toLocaleTimeString('ja-JP');
-          setSyncStatus(`&#10003; 同期完了 (${{t}})`, 'text-success');
+        const token = localStorage.getItem(KEY_GH_TOKEN) || '';
+        if (token) {{
+          await saveRemoteChecked(token);
+          if (showStatus) {{
+            const t = new Date().toLocaleTimeString('ja-JP');
+            setSyncStatus(`&#10003; 同期完了 (${{t}})`, 'text-success');
+          }}
+        }} else if (showStatus) {{
+          setSyncStatus('&#10003; 読み込み完了', 'text-secondary');
         }}
       }} catch (e) {{
         if (showStatus) setSyncStatus(`&#9888; エラー: ${{escHtml(e.message)}}`, 'text-danger');
@@ -739,7 +736,7 @@ def build_html(articles, source_status, generated_at,
     renderArticles();
 
     document.getElementById('sync-now-btn')?.addEventListener('click', () => doSync(true));
-    if (localStorage.getItem(KEY_GH_TOKEN)) doSync(false);
+    doSync(false);
   </script>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
