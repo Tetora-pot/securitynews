@@ -1,7 +1,5 @@
 {
   "checked": [
-    "https://cybersecuritynews.com/microsoft-suspends-developer-accounts/",
-    "https://www.bleepingcomputer.com/news/microsoft/microsoft-suspends-dev-accounts-for-high-profile-open-source-projects/",
     "https://cybersecuritynews.com/hackers-use-aitm-session-hijacking/",
     "https://cybersecuritynews.com/engagesdk-vulnerability-exposes-millions/",
     "https://cybersecuritynews.com/device-bound-chrome-sessions-in-anti-cookie-theft-move/",
@@ -71,7 +69,9 @@
     "https://cybersecuritynews.com/malicious-google-ads-target-crypto-users/",
     "https://www.bleepingcomputer.com/news/security/kyber-ransomware-gang-toys-with-post-quantum-encryption-on-windows/",
     "https://www.security-next.com/183752",
-    "https://cybersecuritynews.com/checkmarx-kics-compromised/"
+    "https://cybersecuritynews.com/checkmarx-kics-compromised/",
+    "https://cybersecuritynews.com/microsoft-suspends-developer-accounts/",
+    "https://www.bleepingcomputer.com/news/microsoft/microsoft-suspends-dev-accounts-for-high-profile-open-source-projects/"
   ],
-  "updated_at": "2026-04-23T03:58:30.466Z"
+  "updated_at": "2026-04-23T04:51:09.344Z"
 }
