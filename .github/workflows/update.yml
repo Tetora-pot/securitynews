@@ -6,8 +6,6 @@ on:
     - cron: '0 * * * *'
   push:
     branches:
-      - claude/security-news-monitor-NxZxs
-      - claude/add-security-news-tags-2B29F
       - main
   workflow_dispatch:
 
