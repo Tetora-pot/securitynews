@@ -7,3 +7,9 @@ venv/
 *.egg-info/
 dist/
 build/
+
+# wrangler files
+.wrangler
+.dev.vars*
+!.dev.vars.example
+!.env.example
