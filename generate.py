@@ -567,9 +567,11 @@ def build_html(articles, source_status, generated_at,
       saveChecked();
       scheduleSync();
       // Update card style without full re-render
-      document.querySelectorAll(`.article-check[data-url="${{CSS.escape(url)}}"]`).forEach(cb => {{
-        cb.checked = checkedSet.has(url);
-        cb.closest('.article-card').classList.toggle('is-checked', checkedSet.has(url));
+      document.querySelectorAll('.article-check').forEach(cb => {{
+        if (cb.dataset.url === url) {{
+          cb.checked = checkedSet.has(url);
+          cb.closest('.article-card').classList.toggle('is-checked', checkedSet.has(url));
+        }}
       }});
       // Re-count if filtering by read/unread
       const rf = document.querySelector('input[name="read-filter"]:checked')?.value;
@@ -655,9 +657,15 @@ def build_html(articles, source_status, generated_at,
       }}
     }}
 
+    async function doWriteSync() {{
+      const token = localStorage.getItem(KEY_GH_TOKEN) || '';
+      if (!token) return;
+      try {{ await saveRemoteChecked(token); }} catch (_) {{}}
+    }}
+
     function scheduleSync() {{
       clearTimeout(syncTimer);
-      syncTimer = setTimeout(() => doSync(false), 2000);
+      syncTimer = setTimeout(doWriteSync, 2000);
     }}
 
     // ===== Render =====
@@ -723,10 +731,6 @@ def build_html(articles, source_status, generated_at,
             </div>
           </div>`;
 
-        // Attach checkbox event (after DOM insert)
-        col.querySelector('.article-check').addEventListener('change', function() {{
-          toggleChecked(this.dataset.url);
-        }});
         container.appendChild(col);
       }});
     }}
@@ -735,6 +739,9 @@ def build_html(articles, source_status, generated_at,
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }}
 
+    document.getElementById('articles-container').addEventListener('change', function(e) {{
+      if (e.target.classList.contains('article-check')) toggleChecked(e.target.dataset.url);
+    }});
     document.querySelectorAll('input[name="filter"], input[name="source"], input[name="read-filter"]').forEach(el =>
       el.addEventListener('change', renderArticles)
     );

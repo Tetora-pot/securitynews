@@ -39,4 +39,5 @@ jobs:
           git add docs/
           git diff --staged --quiet && echo "No changes." && exit 0
           git commit -m "Update security news [skip ci]"
+          git pull --rebase origin main
           git push
