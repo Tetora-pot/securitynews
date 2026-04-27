@@ -657,9 +657,15 @@ def build_html(articles, source_status, generated_at,
       }}
     }}
 
+    async function doWriteSync() {{
+      const token = localStorage.getItem(KEY_GH_TOKEN) || '';
+      if (!token) return;
+      try {{ await saveRemoteChecked(token); }} catch (_) {{}}
+    }}
+
     function scheduleSync() {{
       clearTimeout(syncTimer);
-      syncTimer = setTimeout(() => doSync(false), 2000);
+      syncTimer = setTimeout(doWriteSync, 2000);
     }}
 
     // ===== Render =====
