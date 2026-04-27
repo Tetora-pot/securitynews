@@ -1,5 +1,7 @@
 {
   "checked": [
+    "https://cybersecuritynews.com/microsoft-suspends-developer-accounts/",
+    "https://www.bleepingcomputer.com/news/microsoft/microsoft-suspends-dev-accounts-for-high-profile-open-source-projects/",
     "https://cybersecuritynews.com/hackers-use-aitm-session-hijacking/",
     "https://cybersecuritynews.com/engagesdk-vulnerability-exposes-millions/",
     "https://cybersecuritynews.com/device-bound-chrome-sessions-in-anti-cookie-theft-move/",
@@ -70,8 +72,6 @@
     "https://www.bleepingcomputer.com/news/security/kyber-ransomware-gang-toys-with-post-quantum-encryption-on-windows/",
     "https://www.security-next.com/183752",
     "https://cybersecuritynews.com/checkmarx-kics-compromised/",
-    "https://cybersecuritynews.com/microsoft-suspends-developer-accounts/",
-    "https://www.bleepingcomputer.com/news/microsoft/microsoft-suspends-dev-accounts-for-high-profile-open-source-projects/",
     "https://www.security-next.com/183761",
     "https://cybersecuritynews.com/gmail-blue-checkmark-email-marketing/",
     "https://www.security-next.com/183784",
@@ -84,7 +84,8 @@
     "https://www.bleepingcomputer.com/news/microsoft/microsoft-releases-emergency-security-updates-for-critical-aspnet-flaw/",
     "https://cybersecuritynews.com/adt-confirms-data-breach/",
     "https://www.security-next.com/183868",
+    "https://cybersecuritynews.com/microsoft-store-app-vibing-exe-allegedly-harvested/",
     "https://www.security-next.com/183885"
   ],
-  "updated_at": "2026-04-27T09:50:54.002Z"
+  "updated_at": "2026-04-27T09:50:57.130Z"
 }
