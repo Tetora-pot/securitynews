@@ -52,6 +52,8 @@ body {
   overflow-x: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
+  -ms-overflow-style: none; /* IE/Edge legacy */
+  touch-action: pan-x;     /* allow horizontal pan; don't swallow clicks on Windows touch */
 }
 .filter-scroll::-webkit-scrollbar { display: none; }
 
@@ -84,6 +86,7 @@ body {
 .checked-label {
   cursor: pointer;
   line-height: 1;
+  touch-action: manipulation; /* prevent tap-delay / scroll-capture on Windows touch */
   /* No position/z-index needed — stretched-link removed */
 }
 .checked-label .form-check-input {

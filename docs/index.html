@@ -409,12 +409,27 @@
       return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
     }
 
-    document.getElementById('articles-container').addEventListener('change', function(e) {
-      if (e.target.classList.contains('article-check')) toggleChecked(e.target.dataset.url);
-    });
+    // Windows fix: use click (capture) to avoid change-event issues with btn-check inside overflow containers
+    document.getElementById('articles-container').addEventListener('click', function(e) {
+      const label = e.target.closest('.checked-label');
+      const cb = e.target.closest('.article-check') || (label && label.querySelector('.article-check'));
+      if (!cb) return;
+      e.preventDefault();
+      cb.checked = !cb.checked;
+      toggleChecked(cb.dataset.url);
+    }, true);
     document.querySelectorAll('input[name="filter"], input[name="source"], input[name="read-filter"]').forEach(el =>
       el.addEventListener('change', renderArticles)
     );
+    // Windows fix: also trigger via click on filter labels (change may not fire inside overflow:auto on Windows)
+    document.querySelector('.filter-bar').addEventListener('click', function(e) {
+      const label = e.target.closest('label.btn[for]');
+      if (!label) return;
+      const input = document.getElementById(label.getAttribute('for'));
+      if (!input) return;
+      input.checked = true;
+      renderArticles();
+    });
     document.getElementById('search-input').addEventListener('input', renderArticles);
 
     renderArticles();
