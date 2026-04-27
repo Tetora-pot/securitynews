@@ -591,10 +591,11 @@ def build_html(articles, source_status, generated_at,
     }}
 
     async function loadRemoteChecked() {{
+      const token = localStorage.getItem(KEY_GH_TOKEN) || '';
+      const headers = {{ 'Accept': 'application/vnd.github+json' }};
+      if (token) headers['Authorization'] = `Bearer ${{token}}`;
       try {{
-        const r = await fetch(CHECKED_API_URL, {{
-          headers: {{ 'Accept': 'application/vnd.github+json' }}
-        }});
+        const r = await fetch(CHECKED_API_URL, {{ headers, cache: 'no-store' }});
         if (r.status === 404) return [];
         if (!r.ok) throw new Error(String(r.status));
         const d = await r.json();
@@ -659,8 +660,17 @@ def build_html(articles, source_status, generated_at,
 
     async function doWriteSync() {{
       const token = localStorage.getItem(KEY_GH_TOKEN) || '';
-      if (!token) return;
-      try {{ await saveRemoteChecked(token); }} catch (_) {{}}
+      if (!token) {{
+        setSyncStatus('&#9888; PAT未設定 — このデバイスの変更は他端末に反映されません', 'text-warning');
+        return;
+      }}
+      try {{
+        await saveRemoteChecked(token);
+        const t = new Date().toLocaleTimeString('ja-JP');
+        setSyncStatus(`&#10003; 同期済み (${{t}})`, 'text-success');
+      }} catch (e) {{
+        setSyncStatus(`&#9888; 同期失敗: ${{escHtml(e.message)}}`, 'text-danger');
+      }}
     }}
 
     function scheduleSync() {{
@@ -751,6 +761,14 @@ def build_html(articles, source_status, generated_at,
 
     document.getElementById('sync-now-btn')?.addEventListener('click', () => doSync(true));
     doSync(false);
+
+    // Background read-only sync every 5 minutes
+    setInterval(async () => {{
+      const remoteUrls = await loadRemoteChecked();
+      let changed = false;
+      remoteUrls.forEach(u => {{ if (!checkedSet.has(u)) {{ checkedSet.add(u); changed = true; }} }});
+      if (changed) {{ saveChecked(); renderArticles(); }}
+    }}, 5 * 60 * 1000);
   </script>
 
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
