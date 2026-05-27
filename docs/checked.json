@@ -166,7 +166,8 @@
     "https://www.bleepingcomputer.com/news/security/7-eleven-data-breach-exposes-personal-information-of-185-000-people/",
     "https://www.bleepingcomputer.com/news/security/cisa-orders-feds-to-patch-actively-exploited-drupal-vulnerability/",
     "https://cybersecuritynews.com/apache-cxf-ldap-injection-vulnerability/",
-    "https://cybersecuritynews.com/hackers-use-seo-poisoning-to-impersonate-gemini-cli/"
+    "https://cybersecuritynews.com/hackers-use-seo-poisoning-to-impersonate-gemini-cli/",
+    "https://cybersecuritynews.com/memcached-sasl-vulnerability/"
   ],
-  "updated_at": "2026-05-27T06:26:19.546Z"
+  "updated_at": "2026-05-27T06:29:25.450Z"
 }
