@@ -30,7 +30,11 @@ CHECKED_API_URL = f"https://api.github.com/repos/{GITHUB_REPO}/contents/{CHECKED
 
 FEEDS = [
     {"name": "CyberSecurity News", "url": "https://cybersecuritynews.com/feed/", "lang": "en"},
-    {"name": "BleepingComputer",   "url": "https://www.bleepingcomputer.com/feed/", "lang": "en"},
+    # BleepingComputer's direct feed is behind Cloudflare and returns 403 to
+    # datacenter/CI IPs (GitHub Actions runners). Fall back to Google News RSS
+    # scoped to the site so at least new titles/links are still collected.
+    {"name": "BleepingComputer",   "url": "https://www.bleepingcomputer.com/feed/", "lang": "en",
+     "fallback": "https://news.google.com/rss/search?q=site:bleepingcomputer.com+when:7d&hl=en-US&gl=US&ceid=US:en"},
     {"name": "Security NEXT",      "url": "https://www.security-next.com/feed", "lang": "ja"},
 ]
 
@@ -92,90 +96,110 @@ def _parse_date(raw):
     return datetime.min.replace(tzinfo=timezone.utc)
 
 
+def _fetch_url(url, cfg, is_fallback=False):
+    """Fetch and parse a single feed URL into a list of article dicts.
+
+    Raises ET.ParseError or urllib errors on failure so the caller can retry
+    or fall back. When is_fallback is True the source is treated as a Google
+    News aggregator feed: the " - <Source>" suffix Google appends to titles is
+    stripped and the description (a relinked headline, not a real summary) is
+    dropped.
+    """
+    req = urllib.request.Request(
+        url,
+        headers={
+            "User-Agent": (
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/124.0.0.0 Safari/537.36"
+            ),
+            "Accept": "application/rss+xml, application/xml, text/xml, */*",
+            "Accept-Language": "ja,en;q=0.9",
+            "Cache-Control": "no-cache",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=20) as resp:
+        raw = resp.read()
+        encoding = resp.headers.get("Content-Encoding", "")
+
+    # Decompress if needed
+    if encoding == "gzip":
+        raw = gzip.decompress(raw)
+    elif encoding == "deflate":
+        import zlib
+        raw = zlib.decompress(raw)
+
+    # Strip invalid XML characters (control chars except tab/LF/CR)
+    raw = re.sub(rb'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', b'', raw)
+
+    root = ET.fromstring(raw)
+    lang = cfg["lang"]
+    items = root.findall(".//item") or root.findall(".//{http://www.w3.org/2005/Atom}entry")
+
+    articles = []
+    for item in items[:60]:
+        def g(tag, ns=None):
+            el = item.find(ns + tag if ns else tag)
+            return (el.text or "").strip() if el is not None and el.text else ""
+
+        title = g("title") or item.findtext("{http://www.w3.org/2005/Atom}title", "")
+        link = g("link") or ""
+        if not link:
+            lel = item.find("{http://www.w3.org/2005/Atom}link")
+            link = lel.get("href", "") if lel is not None else ""
+
+        summary = (
+            g("description")
+            or item.findtext(_NS["content"] + "encoded", "")
+            or item.findtext("{http://www.w3.org/2005/Atom}summary", "")
+            or item.findtext("{http://www.w3.org/2005/Atom}content", "")
+        )
+        summary = _strip_tags(summary)
+
+        if is_fallback:
+            # Google News appends " - <Source>" to every title and its
+            # description is not a real summary — normalise both.
+            title = re.sub(r"\s*[-–]\s*%s\s*$" % re.escape(cfg["name"]),
+                           "", title, flags=re.IGNORECASE)
+            title = re.sub(r"\s*[-–]\s*Bleeping ?Computer\s*$",
+                           "", title, flags=re.IGNORECASE).strip()
+            summary = ""
+
+        pub_raw = (
+            g("pubDate")
+            or item.findtext(_NS["dc"] + "date", "")
+            or item.findtext("{http://www.w3.org/2005/Atom}published", "")
+            or item.findtext("{http://www.w3.org/2005/Atom}updated", "")
+        )
+        pub_dt = _parse_date(pub_raw)
+
+        text = f"{title} {summary}"
+        is_exploit = _has_match(text, EXPLOIT_PATTERNS_EN, EXPLOIT_WORDS_JA, lang)
+        is_vuln    = _has_match(text, VULN_PATTERNS_EN,    VULN_WORDS_JA,    lang)
+
+        pub_jst = pub_dt.astimezone(JST) if pub_dt != datetime.min.replace(tzinfo=timezone.utc) else None
+        articles.append({
+            "source":       cfg["name"],
+            "lang":         lang,
+            "title":        title,
+            "title_en":     title,
+            "link":         link,
+            "summary":      summary[:300],
+            "summary_en":   summary[:300],
+            "published":    pub_jst.strftime("%Y-%m-%d %H:%M JST") if pub_jst else "",
+            "published_ts": pub_dt.timestamp(),
+            "is_exploit":   is_exploit,
+            "is_vuln":      is_vuln,
+        })
+
+    return articles
+
+
 def fetch_feed(cfg, max_retries=3):
     error = None
     for attempt in range(1, max_retries + 1):
-        articles = []
         try:
-            req = urllib.request.Request(
-                cfg["url"],
-                headers={
-                    "User-Agent": (
-                        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                        "AppleWebKit/537.36 (KHTML, like Gecko) "
-                        "Chrome/124.0.0.0 Safari/537.36"
-                    ),
-                    "Accept": "application/rss+xml, application/xml, text/xml, */*",
-                    "Accept-Language": "ja,en;q=0.9",
-                    "Cache-Control": "no-cache",
-                },
-            )
-            with urllib.request.urlopen(req, timeout=20) as resp:
-                raw = resp.read()
-                encoding = resp.headers.get("Content-Encoding", "")
-
-            # Decompress if needed
-            if encoding == "gzip":
-                raw = gzip.decompress(raw)
-            elif encoding == "deflate":
-                import zlib
-                raw = zlib.decompress(raw)
-
-            # Strip invalid XML characters (control chars except tab/LF/CR)
-            raw = re.sub(rb'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', b'', raw)
-
-            root = ET.fromstring(raw)
-            lang = cfg["lang"]
-            items = root.findall(".//item") or root.findall(".//{http://www.w3.org/2005/Atom}entry")
-
-            for item in items[:60]:
-                def g(tag, ns=None):
-                    el = item.find(ns + tag if ns else tag)
-                    return (el.text or "").strip() if el is not None and el.text else ""
-
-                title = g("title") or item.findtext("{http://www.w3.org/2005/Atom}title", "")
-                link = g("link") or ""
-                if not link:
-                    lel = item.find("{http://www.w3.org/2005/Atom}link")
-                    link = lel.get("href", "") if lel is not None else ""
-
-                summary = (
-                    g("description")
-                    or item.findtext(_NS["content"] + "encoded", "")
-                    or item.findtext("{http://www.w3.org/2005/Atom}summary", "")
-                    or item.findtext("{http://www.w3.org/2005/Atom}content", "")
-                )
-                summary = _strip_tags(summary)
-
-                pub_raw = (
-                    g("pubDate")
-                    or item.findtext(_NS["dc"] + "date", "")
-                    or item.findtext("{http://www.w3.org/2005/Atom}published", "")
-                    or item.findtext("{http://www.w3.org/2005/Atom}updated", "")
-                )
-                pub_dt = _parse_date(pub_raw)
-
-                text = f"{title} {summary}"
-                is_exploit = _has_match(text, EXPLOIT_PATTERNS_EN, EXPLOIT_WORDS_JA, lang)
-                is_vuln    = _has_match(text, VULN_PATTERNS_EN,    VULN_WORDS_JA,    lang)
-
-                pub_jst = pub_dt.astimezone(JST) if pub_dt != datetime.min.replace(tzinfo=timezone.utc) else None
-                articles.append({
-                    "source":       cfg["name"],
-                    "lang":         lang,
-                    "title":        title,
-                    "title_en":     title,
-                    "link":         link,
-                    "summary":      summary[:300],
-                    "summary_en":   summary[:300],
-                    "published":    pub_jst.strftime("%Y-%m-%d %H:%M JST") if pub_jst else "",
-                    "published_ts": pub_dt.timestamp(),
-                    "is_exploit":   is_exploit,
-                    "is_vuln":      is_vuln,
-                })
-
-            return articles, None, cfg["name"]
-
+            return _fetch_url(cfg["url"], cfg), None, cfg["name"]
         except ET.ParseError as e:
             error = str(e)
             print(f"[WARN] {cfg['name']} (attempt {attempt}/{max_retries}): XML parse error: {e}", file=sys.stderr)
@@ -186,6 +210,21 @@ def fetch_feed(cfg, max_retries=3):
             error = str(e)
             print(f"[ERROR] {cfg['name']}: {e}", file=sys.stderr)
             break
+
+    # Primary feed failed (e.g. Cloudflare 403 on CI IPs). Try the aggregator
+    # fallback if one is configured so we still collect new titles/links.
+    fallback = cfg.get("fallback")
+    if fallback:
+        print(f"[INFO] {cfg['name']}: primary feed failed ({error}); trying fallback source...", file=sys.stderr)
+        try:
+            articles = _fetch_url(fallback, cfg, is_fallback=True)
+            if articles:
+                print(f"[INFO] {cfg['name']}: fallback returned {len(articles)} articles.")
+                return articles, None, cfg["name"]
+            print(f"[WARN] {cfg['name']}: fallback returned no articles.", file=sys.stderr)
+        except Exception as e:
+            print(f"[ERROR] {cfg['name']}: fallback failed: {e}", file=sys.stderr)
+            error = f"{error} / fallback: {e}"
 
     return [], error, cfg["name"]
 
