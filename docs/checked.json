@@ -1,14 +1,7 @@
 {
   "checked": [
-    "https://cybersecuritynews.com/aws-and-anthropic-ai-powered-cybersecurity/",
-    "https://cybersecuritynews.com/claude-apache-activemq/",
-    "https://cybersecuritynews.com/claude-mythos-zero-day-detection/",
-    "https://cybersecuritynews.com/agentic-llm-browsers-expose-new-attack-surface/",
-    "https://www.security-next.com/183460",
-    "https://cybersecuritynews.com/sharepoint-server-0-day-vulnerability/",
-    "https://cybersecuritynews.com/openai-launches-gpt-5-4/",
-    "https://www.security-next.com/183443",
-    "https://www.security-next.com/183510",
+    "https://cybersecuritynews.com/microsoft-suspends-developer-accounts/",
+    "https://www.bleepingcomputer.com/news/microsoft/microsoft-suspends-dev-accounts-for-high-profile-open-source-projects/",
     "https://cybersecuritynews.com/hackers-use-aitm-session-hijacking/",
     "https://cybersecuritynews.com/engagesdk-vulnerability-exposes-millions/",
     "https://cybersecuritynews.com/device-bound-chrome-sessions-in-anti-cookie-theft-move/",
@@ -79,8 +72,6 @@
     "https://www.bleepingcomputer.com/news/security/kyber-ransomware-gang-toys-with-post-quantum-encryption-on-windows/",
     "https://www.security-next.com/183752",
     "https://cybersecuritynews.com/checkmarx-kics-compromised/",
-    "https://cybersecuritynews.com/microsoft-suspends-developer-accounts/",
-    "https://www.bleepingcomputer.com/news/microsoft/microsoft-suspends-dev-accounts-for-high-profile-open-source-projects/",
     "https://www.security-next.com/183761",
     "https://cybersecuritynews.com/gmail-blue-checkmark-email-marketing/",
     "https://www.security-next.com/183784",
@@ -95,6 +86,15 @@
     "https://www.security-next.com/183868",
     "https://cybersecuritynews.com/microsoft-store-app-vibing-exe-allegedly-harvested/",
     "https://www.security-next.com/183885",
+    "https://cybersecuritynews.com/aws-and-anthropic-ai-powered-cybersecurity/",
+    "https://cybersecuritynews.com/claude-apache-activemq/",
+    "https://cybersecuritynews.com/claude-mythos-zero-day-detection/",
+    "https://cybersecuritynews.com/agentic-llm-browsers-expose-new-attack-surface/",
+    "https://www.security-next.com/183460",
+    "https://cybersecuritynews.com/sharepoint-server-0-day-vulnerability/",
+    "https://cybersecuritynews.com/openai-launches-gpt-5-4/",
+    "https://www.security-next.com/183443",
+    "https://www.security-next.com/183510",
     "https://www.bleepingcomputer.com/news/security/hackers-abuse-google-ads-claudeai-chats-to-push-mac-malware/",
     "https://www.bleepingcomputer.com/news/security/police-shut-down-reboot-of-crimenetwork-marketplace-arrest-admin/",
     "https://cybersecuritynews.com/cpanel-and-whm-flaws/",
@@ -243,5 +243,5 @@
     "https://cybersecuritynews.com/hackers-use-fake-chrome-web-store-copyright-notices/",
     "https://www.security-next.com/186567"
   ],
-  "updated_at": "2026-07-10T00:59:08.301Z"
+  "updated_at": "2026-07-11T04:20:43.021Z"
 }
